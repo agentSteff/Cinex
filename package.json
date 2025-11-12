@@ -1,4 +1,13 @@
-{
+
+  {
+  "name": "cinex",
+  "private": true,
+  "workspaces": ["frontend", "backend"],
+   "packageManager": "npm@10.9.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build"
+  },
   "dependencies": {
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

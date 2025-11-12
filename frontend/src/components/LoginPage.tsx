@@ -37,7 +37,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <div className="p-3 bg-yellow-500 rounded-lg">
               <Film className="size-8 text-black" />
             </div>
-            <span className="text-3xl text-white tracking-tight">CineConnect</span>
+            <span className="text-3xl text-white tracking-tight">Cinex</span>
           </div>
 
           <div className="space-y-6">
@@ -52,15 +52,17 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </div>
 
             <div className="grid grid-cols-2 gap-4 max-w-lg">
-              <div className="bg-white/5 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-4">
+               <div className="bg-white/5 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-4 card-hover">
                 <Sparkles className="size-6 text-yellow-500 mb-2" />
                 <p className="text-white text-sm">Recomendaciones IA</p>
-              </div>
-              <div className="bg-white/5 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-4">
-                <Film className="size-6 text-yellow-500 mb-2" />
-                <p className="text-white text-sm">Miles de películas</p>
-              </div>
+           </ div>
+
+            <div className="bg-white/5 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-4 card-hover">
+              <Film className="size-6 text-yellow-500 mb-2" />
+              <p className="text-white text-sm">Miles de películas</p>
             </div>
+          </div>
+
           </div>
 
           <div className="flex gap-8 text-gray-500 text-sm">
