@@ -1,15 +1,22 @@
 import { Router } from 'express';
+import {
+  obtenerCalificacionesPelicula,
+  obtenerMiCalificacion,
+  calificarPelicula,
+  modificarCalificacion,
+  eliminarCalificacion
+} from '../controllers/calificacionescontroller';
+import { autenticarJWT } from '../middleware/auth';
 
 const router = Router();
 
-// TODO: Implementar
-// POST /api/calificaciones/:peliculaId
-// GET /api/calificaciones/pelicula/:peliculaId
-// PUT /api/calificaciones/:id
-// DELETE /api/calificaciones/:id
+// GET /api/calificaciones/pelicula/:peliculaId (público o protegido según prefieras)
+router.get('/pelicula/:peliculaId', obtenerCalificacionesPelicula);
 
-router.get('/', (req, res) => {
-  res.json({ message: 'Calificaciones routes - Pendiente de implementar' });
-});
+// Las siguientes rutas requieren autenticación
+router.get('/mi-calificacion/:peliculaId', autenticarJWT, obtenerMiCalificacion);
+router.post('/', autenticarJWT, calificarPelicula);
+router.put('/:id', autenticarJWT, modificarCalificacion);
+router.delete('/:id', autenticarJWT, eliminarCalificacion);
 
 export default router;
