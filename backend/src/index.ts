@@ -1,27 +1,29 @@
+// backend/src/index.ts
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 
-// Importar rutas (crearemos los archivos después)
+// SOLO nos centramos en auth de momento
 import authRoutes from './routes/auth';
-import peliculasRoutes from './routes/peliculas';
-import calificacionesRoutes from './routes/calificaciones';
-import listasRoutes from './routes/listas';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 // Middlewares
-app.use(cors());
+app.use(
+  cors({
+    origin: FRONTEND_URL,
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
 // Rutas
 app.use('/api/auth', authRoutes);
-app.use('/api/peliculas', peliculasRoutes);
-app.use('/api/calificaciones', calificacionesRoutes);
-app.use('/api/listas', listasRoutes);
 
 // Ruta de prueba
 app.get('/', (req: Request, res: Response) => {
@@ -30,10 +32,7 @@ app.get('/', (req: Request, res: Response) => {
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
-      peliculas: '/api/peliculas',
-      calificaciones: '/api/calificaciones',
-      listas: '/api/listas'
-    }
+    },
   });
 });
 
