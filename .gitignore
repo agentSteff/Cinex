@@ -1,35 +1,66 @@
-# Dependencies
+# .gitignore - monorepo Node (comentarios mínimos)
+
+# node_modules
 node_modules/
-package-lock.json
+**/node_modules/
 
-# Environment variables
-.env
-.env.local
-.env.*.local
+# env (variables de entorno)
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.*
+!**/.env.example
+!**/.env.example.local
 
-# Build outputs
+# prisma
+**/prisma/.env
+
+# builds y caches
 dist/
 build/
+**/dist/
+**/build/
+.next/
+.out/
+.cache/
+.parcel-cache/
+.vite/
+.rpt2_cache/
+coverage/
+.turbo/
+.esbuild/
+.storybook/
+.stylelintcache
+.node-repl-history
 
-# Prisma
-prisma/.env
-
-# Logs
+# logs y temporales
 logs/
 *.log
 npm-debug.log*
+yarn-error.log
+tmp/
+temp/
 
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
+# editor / sistema
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
 *.swp
 *.swo
 *~
 
-# Temporary files
-tmp/
-temp/
+# TypeScript
+*.tsbuildinfo
+
+# gestores de paquetes
+.pnpm-store/
+.pnp.*
+.envrc
+
+# bases de datos locales
+*.sqlite
+*.sqlite3
+
+# misc
+*.tgz
