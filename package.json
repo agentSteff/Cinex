@@ -1,5 +1,4 @@
-
-  {
+{
   "name": "cinex",
   "private": true,
   "workspaces": ["frontend", "backend"],
@@ -9,8 +8,6 @@
     "build": "turbo run build"
   },
   "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "turbo": "^2.6.1"
