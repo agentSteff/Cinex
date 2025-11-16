@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { Film, Mail, Lock, User, ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -15,14 +15,76 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
-    onLogin();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: loginEmail,
+          password: loginPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al iniciar sesión');
+      }
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('usuario', JSON.stringify(data.usuario));
+
+      onLogin();
+    } catch (err: any) {
+      setError(err.message || 'Error al iniciar sesión');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
-    onLogin();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch('http://localhost:5000/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: registerName,
+          email: registerEmail,
+          password: registerPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al registrarse');
+      }
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('usuario', JSON.stringify(data.usuario));
+
+      onLogin();
+    } catch (err: any) {
+      setError(err.message || 'Error al registrarse');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -31,7 +93,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-black via-yellow-950/20 to-black relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(234,179,8,0.1),transparent_50%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(234,179,8,0.05),transparent_50%)]" />
-        
+
         <div className="relative z-10 flex flex-col justify-between p-12 w-full">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-yellow-500 rounded-lg">
@@ -43,7 +105,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <div className="space-y-6">
             <div className="space-y-2">
               <h1 className="text-5xl text-white leading-tight">
-                Tu catálogo<br />
+                Tu catálogo
+                <br />
                 <span className="text-yellow-500">cinematográfico</span>
               </h1>
               <p className="text-xl text-gray-400 max-w-md">
@@ -52,17 +115,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </div>
 
             <div className="grid grid-cols-2 gap-4 max-w-lg">
-               <div className="bg-white/5 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-4 card-hover">
+              <div className="bg-white/5 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-4 card-hover">
                 <Sparkles className="size-6 text-yellow-500 mb-2" />
                 <p className="text-white text-sm">Recomendaciones IA</p>
-           </ div>
+              </div>
 
-            <div className="bg-white/5 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-4 card-hover">
-              <Film className="size-6 text-yellow-500 mb-2" />
-              <p className="text-white text-sm">Miles de películas</p>
+              <div className="bg-white/5 backdrop-blur-sm border border-yellow-500/20 rounded-lg p-4 card-hover">
+                <Film className="size-6 text-yellow-500 mb-2" />
+                <p className="text-white text-sm">Miles de películas</p>
+              </div>
             </div>
-          </div>
-
           </div>
 
           <div className="flex gap-8 text-gray-500 text-sm">
@@ -89,9 +151,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <button
               onClick={() => setIsLogin(true)}
               className={`flex-1 py-3 rounded-md transition-all ${
-                isLogin
-                  ? 'bg-yellow-500 text-black'
-                  : 'text-gray-400 hover:text-white'
+                isLogin ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
               }`}
             >
               Iniciar Sesión
@@ -99,9 +159,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <button
               onClick={() => setIsLogin(false)}
               className={`flex-1 py-3 rounded-md transition-all ${
-                !isLogin
-                  ? 'bg-yellow-500 text-black'
-                  : 'text-gray-400 hover:text-white'
+                !isLogin ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
               }`}
             >
               Registrarse
@@ -143,7 +201,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
               <div className="flex items-center justify-between text-sm">
                 <label className="flex items-center gap-2 text-gray-400 cursor-pointer">
-                  <input type="checkbox" className="rounded border-white/20 bg-white/5" />
+                  <input type="checkbox" className="rounded border-white/20 bg.white/5" />
                   Recordarme
                 </label>
                 <button type="button" className="text-yellow-500 hover:text-yellow-400">
@@ -153,11 +211,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
               <Button
                 type="submit"
+                disabled={loading}
                 className="w-full h-14 bg-yellow-500 hover:bg-yellow-600 text-black rounded-lg gap-2 group"
               >
-                Iniciar Sesión
-                <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+                {loading ? 'Ingresando...' : 'Iniciar Sesión'}
+                {!loading && (
+                  <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+                )}
               </Button>
+
+              {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-5">
@@ -211,8 +274,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                     Acepto los{' '}
                     <button type="button" className="text-yellow-500 hover:text-yellow-400">
                       términos y condiciones
-                    </button>
-                    {' '}y la{' '}
+                    </button>{' '}
+                    y la{' '}
                     <button type="button" className="text-yellow-500 hover:text-yellow-400">
                       política de privacidad
                     </button>
@@ -222,11 +285,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
               <Button
                 type="submit"
+                disabled={loading}
                 className="w-full h-14 bg-yellow-500 hover:bg-yellow-600 text-black rounded-lg gap-2 group"
               >
-                Crear Cuenta
-                <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+                {loading ? 'Registrando...' : 'Crear Cuenta'}
+                {!loading && (
+                  <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+                )}
               </Button>
+
+              {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
             </form>
           )}
 
@@ -244,14 +312,14 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               <Button
                 type="button"
                 variant="outline"
-                className="h-12 bg-white/5 border-white/10 text-white hover:bg-white/10 hover:border-yellow-500/50"
+                className="h-12 bg-white/5 border-white/10 text.white hover:bg-white/10 hover:border-yellow-500/50"
               >
                 Google
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-12 bg-white/5 border-white/10 text-white hover:bg-white/10 hover:border-yellow-500/50"
+                className="h-12 bg-white/5 border-white/10 text.white hover:bg-white/10 hover:border-yellow-500/50"
               >
                 Apple
               </Button>
