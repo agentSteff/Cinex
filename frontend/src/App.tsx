@@ -23,7 +23,7 @@ export default function App() {
 
   const handleLogin = () => {
     setIsLoggedIn(true);
-    setCurrentPage('home');
+    setCurrentPage('home'); 
   };
 
   const handleLogout = () => {
@@ -53,14 +53,14 @@ export default function App() {
         />
       )}
 
-    {currentPage === 'detail' && selectedMovieId !== null && (
-    <MovieDetail
-    movieId={selectedMovieId}
-    onBack={() => setCurrentPage('home')}
-    onNavigate={setCurrentPage}
-    onLogout={handleLogout}
-     />
-    )}
+      {currentPage === 'detail' && selectedMovieId !== null && (
+        <MovieDetail
+          movieId={selectedMovieId}
+          onBack={() => setCurrentPage('home')}
+          onNavigate={setCurrentPage}
+          onLogout={handleLogout}
+        />
+      )}
 
       {currentPage === 'lists' && (
         <MyLists
