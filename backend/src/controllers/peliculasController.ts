@@ -1,23 +1,35 @@
-import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { NextFunction, Request, Response } from 'express';
+import { Prisma, PrismaClient } from '@prisma/client';
+import { z } from 'zod';
 import { 
   buscarPeliculas, 
-  obtenerPeliculasPopulares, 
-  obtenerPeliculasTop 
+  obtenerPeliculasPopulares
 } from '../utils/tmdbService';
+import { AppError, handleControllerError } from '../middleware/errorHandler';
 
 const prisma = new PrismaClient();
 
+type PeliculaConCalificaciones = Prisma.PeliculaGetPayload<{
+  include: { calificaciones: true }
+}>;
+
+const GuardarPeliculaSchema = z.object({
+  titulo: z.string().min(1, 'El título es requerido'),
+  tmdbId: z.number().int('tmdbId debe ser entero').positive('tmdbId debe ser positivo'),
+  año: z.number().int().min(1800).max(2100).optional().nullable(),
+  genero: z.string().min(1).max(100).optional().nullable(),
+  director: z.string().min(1).max(255).optional().nullable(),
+  sinopsis: z.string().max(5000).optional().nullable(),
+  imagenUrl: z.string().url('imagenUrl debe ser una URL válida').optional().nullable()
+});
+
 // Buscar películas por título
-export const buscar = async (req: Request, res: Response): Promise<void> => {
+export const buscar = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { q } = req.query;
 
     if (!q || typeof q !== 'string') {
-      res.status(400).json({
-        error: 'Parámetro de búsqueda "q" requerido'
-      });
-      return;
+      return next(new AppError('Parámetro de búsqueda "q" requerido', 400));
     }
 
     // Llamar a TMDB API
@@ -30,15 +42,12 @@ export const buscar = async (req: Request, res: Response): Promise<void> => {
       data: peliculas
     });
   } catch (error) {
-    console.error('Error en búsqueda:', error);
-    res.status(500).json({
-      error: 'Error realizando búsqueda de películas'
-    });
+    handleControllerError(error, next, 'Error realizando búsqueda de películas');
   }
 };
 
 // Obtener películas populares
-export const obtenerPopulares = async (req: Request, res: Response): Promise<void> => {
+export const obtenerPopulares = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const peliculas = await obtenerPeliculasPopulares();
 
@@ -48,42 +57,54 @@ export const obtenerPopulares = async (req: Request, res: Response): Promise<voi
       data: peliculas
     });
   } catch (error) {
-    console.error('Error obteniendo populares:', error);
-    res.status(500).json({
-      error: 'Error obteniendo películas populares'
-    });
+    handleControllerError(error, next, 'Error obteniendo películas populares');
   }
 };
 
 // Top películas (mejor calificadas en nuestra BD)
-export const obtenerTop = async (req: Request, res: Response): Promise<void> => {
+export const obtenerTop = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const peliculas = await obtenerPeliculasTop();
+    const peliculas: PeliculaConCalificaciones[] = await prisma.pelicula.findMany({
+      include: { calificaciones: true },
+      orderBy: [
+        { calificaciones: { _count: 'desc' } },
+        { fechaAgregada: 'desc' }
+      ],
+      take: 10
+    });
+
+    const data = peliculas.map((pelicula) => {
+      const total = pelicula.calificaciones.length;
+      const promedio = total === 0
+        ? 0
+        : pelicula.calificaciones.reduce((sum: number, cal) => sum + cal.puntuacion, 0) / total;
+
+      const { calificaciones, ...resto } = pelicula;
+      return {
+        ...resto,
+        promedio: Number(promedio.toFixed(2)),
+        totalCalificaciones: total
+      };
+    });
 
     res.json({
-      source: 'tmdb_api',
-      count: peliculas.length,
-      data: peliculas
+      source: 'cinex_db',
+      count: data.length,
+      data
     });
   } catch (error) {
-    console.error('Error en top:', error);
-    res.status(500).json({
-      error: 'Error obteniendo películas top'
-    });
+    handleControllerError(error, next, 'Error obteniendo películas top');
   }
 };
 
 // Obtener detalle de película con calificación promedio
 // TODO: validar que esto funcione correctamente con TMDB
-export const obtenerDetalle = async (req: Request, res: Response): Promise<void> => {
+export const obtenerDetalle = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
 
     if (!id) {
-      res.status(400).json({
-        error: 'ID de película requerido'
-      });
-      return;
+      return next(new AppError('ID de película requerido', 400));
     }
 
     // Buscar película en nuestra BD
@@ -99,10 +120,7 @@ export const obtenerDetalle = async (req: Request, res: Response): Promise<void>
     });
 
     if (!pelicula) {
-      res.status(404).json({
-        error: 'Película no encontrada'
-      });
-      return;
+      return next(new AppError('Película no encontrada', 404));
     }
 
     // Calcular promedio de calificaciones
@@ -117,9 +135,88 @@ export const obtenerDetalle = async (req: Request, res: Response): Promise<void>
       totalCalificaciones: pelicula.calificaciones.length
     });
   } catch (error) {
-    console.error('Error en detalle:', error);
-    res.status(500).json({
-      error: 'Error obteniendo detalle de película'
+    handleControllerError(error, next, 'Error obteniendo detalle de película');
+  }
+};
+
+// Guardar o actualizar una película proveniente de TMDB
+export const guardarDesdeTMDB = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const payload = GuardarPeliculaSchema.parse(req.body);
+
+    const previa = await prisma.pelicula.findUnique({ where: { tmdbId: payload.tmdbId } });
+
+    const pelicula = await prisma.pelicula.upsert({
+      where: { tmdbId: payload.tmdbId },
+      update: {
+        titulo: payload.titulo,
+        año: payload.año ?? null,
+        genero: payload.genero ?? null,
+        director: payload.director ?? null,
+        sinopsis: payload.sinopsis ?? null,
+        imagenUrl: payload.imagenUrl ?? null
+      },
+      create: {
+        titulo: payload.titulo,
+        tmdbId: payload.tmdbId,
+        año: payload.año ?? null,
+        genero: payload.genero ?? null,
+        director: payload.director ?? null,
+        sinopsis: payload.sinopsis ?? null,
+        imagenUrl: payload.imagenUrl ?? null
+      }
     });
+
+    res.status(previa ? 200 : 201).json({
+      message: 'Película almacenada en la base de datos',
+      pelicula
+    });
+  } catch (error) {
+    handleControllerError(error, next, 'Error al guardar película');
+  }
+};
+
+// Obtener películas filtradas por género almacenado en la BD
+export const obtenerPorGenero = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { genero } = req.params;
+
+    if (!genero) {
+      return next(new AppError('Debe indicar un género', 400));
+    }
+
+    const peliculas: PeliculaConCalificaciones[] = await prisma.pelicula.findMany({
+      where: {
+        genero: {
+          equals: genero,
+          mode: 'insensitive'
+        }
+      },
+      include: { calificaciones: true },
+      orderBy: { fechaAgregada: 'desc' }
+    });
+
+    const data = peliculas.map((pelicula) => {
+      const total = pelicula.calificaciones.length;
+      const promedio = total === 0
+        ? 0
+        : pelicula.calificaciones.reduce((sum: number, cal) => sum + cal.puntuacion, 0) / total;
+
+      const { calificaciones, ...resto } = pelicula;
+      return {
+        ...resto,
+        promedio: Number(promedio.toFixed(2)),
+        totalCalificaciones: total
+      };
+    });
+
+    res.json({
+      source: 'cinex_db',
+      generoBuscado: genero,
+      count: data.length,
+      data
+    });
+  } catch (error) {
+    handleControllerError(error, next, 'Error al filtrar películas por género');
   }
 };

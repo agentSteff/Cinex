@@ -8,7 +8,7 @@ async function main() {
 
   // Limpiar datos existentes (opcional)
   console.log('🧹 Limpiando datos antiguos (TRUNCATE)...');
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "listas", "calificaciones", "peliculas", "usuarios" RESTART IDENTITY CASCADE');
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "lista_personalizada_items", "listas_personalizadas", "listas", "calificaciones", "peliculas", "usuarios" RESTART IDENTITY CASCADE');
 
   // ==========================================
   // CREAR USUARIOS DE PRUEBA
@@ -187,29 +187,34 @@ async function main() {
       { usuarioId: usuario3.id, peliculaId: pelicula2.id, tipoLista: 'por_ver' },
 
       // Usuario 3 - Favoritas
-      { usuarioId: usuario3.id, peliculaId: pelicula6.id, tipoLista: 'favoritas' },
-
-      // Usuario 3 - Lista personalizada "Noches Sci-Fi"
-      {
-        usuarioId: usuario3.id,
-        peliculaId: pelicula6.id,
-        tipoLista: 'personalizada',
-        nombre: 'Noches Sci-Fi',
-        descripcion: 'Películas para maratón de ciencia ficción',
-        esPrivada: false,
-      },
-      {
-        usuarioId: usuario3.id,
-        peliculaId: pelicula3.id,
-        tipoLista: 'personalizada',
-        nombre: 'Noches Sci-Fi',
-        descripcion: 'Películas para maratón de ciencia ficción',
-        esPrivada: false,
-      }
+      { usuarioId: usuario3.id, peliculaId: pelicula6.id, tipoLista: 'favoritas' }
     ],
   });
 
-  console.log(`✅ ${13} entradas de listas creadas`);
+  console.log(`✅ ${11} entradas de listas creadas`);
+
+  // ==========================================
+  // LISTAS PERSONALIZADAS (cabeceras + items)
+  // ==========================================
+  console.log('📂 Creando listas personalizadas...');
+
+  const listaNochesSciFi = await prisma.listaPersonalizada.create({
+    data: {
+      usuarioId: usuario3.id,
+      nombre: 'Noches Sci-Fi',
+      descripcion: 'Películas para maratón de ciencia ficción',
+      esPrivada: false
+    }
+  });
+
+  await prisma.listaPersonalizadaItem.createMany({
+    data: [
+      { listaId: listaNochesSciFi.id, peliculaId: pelicula6.id },
+      { listaId: listaNochesSciFi.id, peliculaId: pelicula3.id }
+    ]
+  });
+
+  console.log(`✅ 1 lista personalizada y 2 entradas creadas`);
 
   console.log('');
   console.log('✅ Seed completado exitosamente! 🎉');
@@ -218,7 +223,8 @@ async function main() {
   console.log('   - 3 usuarios creados');
   console.log('   - 6 películas creadas');
   console.log('   - 9 calificaciones creadas');
-  console.log('   - 13 listas personales creadas');
+  console.log('   - 11 entradas en listas predeterminadas');
+  console.log('   - 1 lista personalizada con 2 películas');
   console.log('');
   console.log('🔑 Credenciales de prueba:');
   console.log('   Email: juan@test.com');

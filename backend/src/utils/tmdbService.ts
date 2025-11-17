@@ -1,17 +1,13 @@
 import axios from 'axios';
 import { PeliculaTMDB } from '../types';
+import { appConfig } from '../config/env';
 
-const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-
-if (!TMDB_API_KEY) {
-  console.warn('⚠️  TMDB_API_KEY no configurada en .env');
-}
 
 const tmdbClient = axios.create({
   baseURL: TMDB_BASE_URL,
   params: {
-    api_key: TMDB_API_KEY,
+    api_key: appConfig.TMDB_API_KEY,
     language: 'es-ES'
   }
 });

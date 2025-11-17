@@ -25,6 +25,7 @@ model Usuario {
   // Relaciones
   calificaciones Calificacion[]
   listas         Lista[]
+  listasPersonalizadas ListaPersonalizada[]
 
   @@map("usuarios")
   @@index([email], name: "idx_usuario_email")
@@ -46,6 +47,7 @@ model Pelicula {
   // Relaciones
   calificaciones Calificacion[]
   listas         Lista[]
+  listasPersonalizadas ListaPersonalizadaItem[]
 
   @@map("peliculas")
   @@index([genero], name: "idx_peliculas_genero")
@@ -94,4 +96,36 @@ model Lista {
   @@index([usuarioId], name: "idx_listas_usuario")
   @@index([peliculaId], name: "idx_listas_pelicula")
   @@index([tipoLista], name: "idx_listas_tipo")
+}
+
+/// Encabezado de listas personalizadas creadas por el usuario
+model ListaPersonalizada {
+  id           Int      @id @default(autoincrement())
+  usuarioId    Int      @map("usuario_id")
+  nombre       String   @db.VarChar(255)
+  descripcion  String?  @db.Text
+  esPrivada    Boolean  @default(false) @map("es_privada")
+  fechaCreada  DateTime @default(now()) @map("fecha_creada")
+
+  usuario      Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  entradas     ListaPersonalizadaItem[]
+
+  @@map("listas_personalizadas")
+  @@unique([usuarioId, nombre], name: "idx_listas_personalizadas_nombre")
+  @@index([usuarioId], name: "idx_listas_personalizadas_usuario")
+}
+
+/// Entradas de películas dentro de una lista personalizada
+model ListaPersonalizadaItem {
+  id           Int      @id @default(autoincrement())
+  listaId      Int      @map("lista_id")
+  peliculaId   Int      @map("pelicula_id")
+  fechaAgregada DateTime @default(now()) @map("fecha_agregada")
+
+  lista    ListaPersonalizada @relation(fields: [listaId], references: [id], onDelete: Cascade)
+  pelicula Pelicula            @relation(fields: [peliculaId], references: [id], onDelete: Cascade)
+
+  @@map("lista_personalizada_items")
+  @@unique([listaId, peliculaId], name: "idx_lista_personalizada_items_unique")
+  @@index([peliculaId], name: "idx_lista_personalizada_items_pelicula")
 }

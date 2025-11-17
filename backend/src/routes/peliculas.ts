@@ -3,8 +3,11 @@ import {
   buscar,
   obtenerPopulares,
   obtenerTop,
-  obtenerDetalle
+  obtenerDetalle,
+  guardarDesdeTMDB,
+  obtenerPorGenero
 } from '../controllers/peliculasController';
+import { autenticarJWT } from '../middleware/auth';
 
 const router = Router();
 
@@ -12,6 +15,8 @@ const router = Router();
 router.get('/buscar', buscar);
 router.get('/populares', obtenerPopulares);
 router.get('/top', obtenerTop);
+router.get('/genero/:genero', obtenerPorGenero);
 router.get('/:id', obtenerDetalle);
+router.post('/', autenticarJWT, guardarDesdeTMDB);
 
 export default router;

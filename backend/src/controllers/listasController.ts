@@ -1,6 +1,7 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth';
+import { AppError, handleControllerError } from '../middleware/errorHandler';
 
 const prisma = new PrismaClient();
 
@@ -11,18 +12,45 @@ const LISTAS_PREDETERMINADAS = {
   FAVORITAS: 'favoritas'
 };
 
+type ListaConDetalle = Prisma.ListaGetPayload<{
+  include: {
+    pelicula: {
+      include: {
+        _count: { select: { calificaciones: true } }
+      }
+    }
+  }
+}>;
+
+type EntradaListaPersonalizada = Prisma.ListaPersonalizadaItemGetPayload<{
+  include: {
+    pelicula: {
+      include: { _count: { select: { calificaciones: true } } }
+    }
+  }
+}>;
+
 /**
  * Obtener todas mis listas (predeterminadas + personalizadas)
  * GET /api/listas/mis-listas
  */
-export const obtenerMisListas = async (req: AuthRequest, res: Response): Promise<void> => {
+export const obtenerMisListas = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const usuarioId = req.usuario?.id;
 
-    // Obtener listas personalizadas y conteos usando el modelo genérico `lista`
-    const listasPersonalizadas = await prisma.lista.findMany({
-      where: { usuarioId, tipoLista: 'personalizada' },
-      orderBy: { fechaAgregada: 'desc' }
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
+
+    // Obtener listas personalizadas reales con conteo de películas
+    const listasPersonalizadas = await prisma.listaPersonalizada.findMany({
+      where: { usuarioId },
+      orderBy: { fechaCreada: 'desc' },
+      include: {
+        _count: {
+          select: { entradas: true }
+        }
+      }
     });
 
     const porVerCount = await prisma.lista.count({ where: { usuarioId, tipoLista: 'por_ver' } });
@@ -57,17 +85,19 @@ export const obtenerMisListas = async (req: AuthRequest, res: Response): Promise
     res.json({
       listasPredeterminadas,
       listasPersonalizadas: listasPersonalizadas.map((lista) => ({
-        ...lista,
+        id: lista.id,
+        nombre: lista.nombre,
+        descripcion: lista.descripcion,
+        esPrivada: lista.esPrivada,
         tipo: 'personalizada',
-        esPredeterminada: false
+        esPredeterminada: false,
+        totalPeliculas: lista._count.entradas,
+        fechaCreada: lista.fechaCreada
       }))
     });
 
   } catch (error) {
-    console.error('Error obteniendo listas:', error);
-    res.status(500).json({
-      error: 'Error al obtener las listas'
-    });
+    handleControllerError(error, next, 'Error al obtener las listas');
   }
 };
 
@@ -75,121 +105,160 @@ export const obtenerMisListas = async (req: AuthRequest, res: Response): Promise
  * Obtener detalle de una lista específica
  * GET /api/listas/:listaId
  */
-export const obtenerLista = async (req: AuthRequest, res: Response): Promise<void> => {
+export const obtenerLista = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { listaId } = req.params;
     const usuarioId = req.usuario?.id;
 
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
     // Determinar si es lista predeterminada o personalizada
     if (Object.values(LISTAS_PREDETERMINADAS).includes(listaId as any)) {
       // Es lista predeterminada
-      await obtenerListaPredeterminada(req, res);
+      await obtenerListaPredeterminada(req, res, next);
     } else {
       // Es lista personalizada
-      await obtenerListaPersonalizada(req, res);
+      await obtenerListaPersonalizada(req, res, next);
     }
 
   } catch (error) {
-    console.error('Error obteniendo lista:', error);
-    res.status(500).json({
-      error: 'Error al obtener la lista'
-    });
+    handleControllerError(error, next, 'Error al obtener la lista');
   }
 };
 
 /**
  * Obtener lista predeterminada (Por Ver, Vistas, Favoritas)
  */
-const obtenerListaPredeterminada = async (req: AuthRequest, res: Response): Promise<void> => {
-  const { listaId } = req.params;
-  const usuarioId = req.usuario?.id;
+const obtenerListaPredeterminada = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { listaId } = req.params;
+    const usuarioId = req.usuario?.id;
 
-  let peliculas: any[] = [];
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
 
-  switch (listaId) {
-    case LISTAS_PREDETERMINADAS.POR_VER:
-      peliculas = await prisma.lista.findMany({
-        where: { usuarioId, tipoLista: 'por_ver' },
-        include: {
-          pelicula: {
-            include: { _count: { select: { calificaciones: true } } }
-          }
-        },
-        orderBy: { fechaAgregada: 'desc' }
-      });
-      break;
+    let peliculas: ListaConDetalle[] = [];
 
-    case LISTAS_PREDETERMINADAS.VISTAS:
-      peliculas = await prisma.lista.findMany({
-        where: { usuarioId, tipoLista: 'vistas' },
-        include: {
-          pelicula: {
-            include: { _count: { select: { calificaciones: true } } }
-          }
-        },
-        orderBy: { fechaAgregada: 'desc' }
-      });
-      break;
+    switch (listaId) {
+      case LISTAS_PREDETERMINADAS.POR_VER:
+        peliculas = await prisma.lista.findMany({
+          where: { usuarioId, tipoLista: 'por_ver' },
+          include: {
+            pelicula: {
+              include: { _count: { select: { calificaciones: true } } }
+            }
+          },
+          orderBy: { fechaAgregada: 'desc' }
+        });
+        break;
 
-    case LISTAS_PREDETERMINADAS.FAVORITAS:
-      peliculas = await prisma.lista.findMany({
-        where: { usuarioId, tipoLista: 'favoritas' },
-        include: {
-          pelicula: {
-            include: { _count: { select: { calificaciones: true } } }
-          }
-        },
-        orderBy: { fechaAgregada: 'desc' }
-      });
-      break;
+      case LISTAS_PREDETERMINADAS.VISTAS:
+        peliculas = await prisma.lista.findMany({
+          where: { usuarioId, tipoLista: 'vistas' },
+          include: {
+            pelicula: {
+              include: { _count: { select: { calificaciones: true } } }
+            }
+          },
+          orderBy: { fechaAgregada: 'desc' }
+        });
+        break;
+
+      case LISTAS_PREDETERMINADAS.FAVORITAS:
+        peliculas = await prisma.lista.findMany({
+          where: { usuarioId, tipoLista: 'favoritas' },
+          include: {
+            pelicula: {
+              include: { _count: { select: { calificaciones: true } } }
+            }
+          },
+          orderBy: { fechaAgregada: 'desc' }
+        });
+        break;
+    }
+
+    res.json({
+      listaId,
+      tipo: 'predeterminada',
+      peliculas: peliculas
+        .filter((item) => item.pelicula)
+        .map((item) => ({
+          ...item.pelicula!,
+          fechaAgregado: item.fechaAgregada
+        }))
+    });
+  } catch (error) {
+    handleControllerError(error, next, 'Error al obtener la lista predeterminada');
   }
-
-  res.json({
-    listaId,
-    tipo: 'predeterminada',
-    peliculas: (peliculas as any[])
-      .filter(item => item.pelicula)
-      .map(item => ({
-        ...item.pelicula,
-        fechaAgregado: item.fechaAgregada
-      }))
-  });
 };
 
 /**
  * Obtener lista personalizada
  */
-const obtenerListaPersonalizada = async (req: AuthRequest, res: Response): Promise<void> => {
-  const { listaId } = req.params;
-  const usuarioId = req.usuario?.id;
+const obtenerListaPersonalizada = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { listaId } = req.params;
+    const usuarioId = req.usuario?.id;
+    const numericId = parseInt(listaId, 10);
 
-  const lista = await prisma.lista.findFirst({
-    where: { id: parseInt(listaId), usuarioId, tipoLista: 'personalizada' },
-    include: {
-      pelicula: false,
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
     }
-  });
 
-  if (!lista) {
-    res.status(404).json({ error: 'Lista no encontrada' });
-    return;
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('Identificador de lista inválido', 400));
+    }
+
+    const lista = await prisma.listaPersonalizada.findFirst({
+      where: { id: numericId, usuarioId },
+      include: {
+        entradas: {
+          orderBy: { fechaAgregada: 'desc' },
+          include: {
+            pelicula: {
+              include: { _count: { select: { calificaciones: true } } }
+            }
+          }
+        }
+      }
+    });
+
+    if (!lista) {
+      return next(new AppError('Lista no encontrada', 404));
+    }
+
+    res.json({
+      id: lista.id,
+      nombre: lista.nombre,
+      descripcion: lista.descripcion,
+      esPrivada: lista.esPrivada,
+      tipo: 'personalizada',
+      peliculas: lista.entradas
+        .filter((entrada: EntradaListaPersonalizada) => entrada.pelicula)
+        .map((entrada: EntradaListaPersonalizada) => ({
+          ...entrada.pelicula!,
+          fechaAgregado: entrada.fechaAgregada
+        }))
+    });
+  } catch (error) {
+    handleControllerError(error, next, 'Error al obtener la lista personalizada');
   }
-
-  res.json({
-    ...lista,
-    // Si se requiere más detalle de películas, frontend puede pedirlo via endpoint de películas
-    peliculas: []
-  });
 };
 
 /**
  * Agregar película a lista "Por Ver"
  * POST /api/listas/por-ver/:peliculaId
  */
-export const agregarAPorVer = async (req: AuthRequest, res: Response): Promise<void> => {
+export const agregarAPorVer = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { peliculaId } = req.params;
     const usuarioId = req.usuario?.id;
+
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
 
     // Verificar que la película existe
     const pelicula = await prisma.pelicula.findUnique({
@@ -197,8 +266,7 @@ export const agregarAPorVer = async (req: AuthRequest, res: Response): Promise<v
     });
 
     if (!pelicula) {
-      res.status(404).json({ error: 'Película no encontrada' });
-      return;
+      return next(new AppError('Película no encontrada', 404));
     }
 
     // Verificar si ya está en la lista
@@ -207,8 +275,7 @@ export const agregarAPorVer = async (req: AuthRequest, res: Response): Promise<v
     });
 
     if (existeEnLista) {
-      res.status(409).json({ error: 'La película ya está en tu lista "Por Ver"' });
-      return;
+      return next(new AppError('La película ya está en tu lista "Por Ver"', 409));
     }
 
     // Agregar a lista "Por Ver"
@@ -223,10 +290,7 @@ export const agregarAPorVer = async (req: AuthRequest, res: Response): Promise<v
     });
 
   } catch (error) {
-    console.error('Error agregando a Por Ver:', error);
-    res.status(500).json({
-      error: 'Error al agregar película a la lista'
-    });
+    handleControllerError(error, next, 'Error al agregar película a la lista');
   }
 };
 
@@ -234,10 +298,14 @@ export const agregarAPorVer = async (req: AuthRequest, res: Response): Promise<v
  * Marcar película como vista (mueve de "Por Ver" a "Vistas")
  * POST /api/listas/marcar-vista/:peliculaId
  */
-export const marcarComoVista = async (req: AuthRequest, res: Response): Promise<void> => {
+export const marcarComoVista = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { peliculaId } = req.params;
     const usuarioId = req.usuario?.id;
+
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
 
     // Verificar que la película existe
     const pelicula = await prisma.pelicula.findUnique({
@@ -245,8 +313,7 @@ export const marcarComoVista = async (req: AuthRequest, res: Response): Promise<
     });
 
     if (!pelicula) {
-      res.status(404).json({ error: 'Película no encontrada' });
-      return;
+      return next(new AppError('Película no encontrada', 404));
     }
 
     // Usar transacción para asegurar consistencia
@@ -258,7 +325,7 @@ export const marcarComoVista = async (req: AuthRequest, res: Response): Promise<
       const existeEnVistas = await tx.lista.findFirst({ where: { usuarioId, peliculaId: parseInt(peliculaId), tipoLista: 'vistas' } });
 
       if (existeEnVistas) {
-        throw new Error('La película ya está marcada como vista');
+        throw new AppError('La película ya está marcada como vista', 409);
       }
 
       // Agregar a "Vistas"
@@ -272,16 +339,8 @@ export const marcarComoVista = async (req: AuthRequest, res: Response): Promise<
       pelicula: resultado.pelicula
     });
 
-  } catch (error: any) {
-    console.error('Error marcando como vista:', error);
-    
-    if (error.message.includes('ya está marcada como vista')) {
-      res.status(409).json({ error: error.message });
-    } else {
-      res.status(500).json({
-        error: 'Error al marcar película como vista'
-      });
-    }
+  } catch (error) {
+    handleControllerError(error, next, 'Error al marcar película como vista');
   }
 };
 
@@ -289,16 +348,19 @@ export const marcarComoVista = async (req: AuthRequest, res: Response): Promise<
  * Remover película de lista "Por Ver"
  * DELETE /api/listas/por-ver/:peliculaId
  */
-export const removerDePorVer = async (req: AuthRequest, res: Response): Promise<void> => {
+export const removerDePorVer = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { peliculaId } = req.params;
     const usuarioId = req.usuario?.id;
 
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
+
     const resultado = await prisma.lista.deleteMany({ where: { usuarioId, peliculaId: parseInt(peliculaId), tipoLista: 'por_ver' } });
 
     if (resultado.count === 0) {
-      res.status(404).json({ error: 'Película no encontrada en la lista "Por Ver"' });
-      return;
+      return next(new AppError('Película no encontrada en la lista "Por Ver"', 404));
     }
 
     res.json({
@@ -306,10 +368,7 @@ export const removerDePorVer = async (req: AuthRequest, res: Response): Promise<
     });
 
   } catch (error) {
-    console.error('Error removiendo de Por Ver:', error);
-    res.status(500).json({
-      error: 'Error al remover película de la lista'
-    });
+    handleControllerError(error, next, 'Error al remover película de la lista');
   }
 };
 
@@ -317,34 +376,34 @@ export const removerDePorVer = async (req: AuthRequest, res: Response): Promise<
  * Crear lista personalizada
  * POST /api/listas/personalizadas
  */
-export const crearListaPersonalizada = async (req: AuthRequest, res: Response): Promise<void> => {
+export const crearListaPersonalizada = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const usuarioId = req.usuario?.id;
     const { nombre, descripcion, esPrivada = false } = req.body;
 
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
+
     if (!nombre) {
-      res.status(400).json({ error: 'El nombre de la lista es requerido' });
-      return;
+      return next(new AppError('El nombre de la lista es requerido', 400));
     }
 
     // Verificar si ya existe una lista con ese nombre para el usuario
-    const listaExistente = await prisma.lista.findFirst({ where: { usuarioId, tipoLista: 'personalizada', nombre } });
+    const listaExistente = await prisma.listaPersonalizada.findFirst({ where: { usuarioId, nombre } });
 
     if (listaExistente) {
-      res.status(409).json({ error: 'Ya tienes una lista con ese nombre' });
-      return;
+      return next(new AppError('Ya tienes una lista con ese nombre', 409));
     }
 
-    const data: Prisma.ListaUncheckedCreateInput = {
-      tipoLista: 'personalizada',
-      nombre,
-      descripcion: descripcion ?? null,
-      esPrivada,
-      usuarioId: usuarioId!,
-      fechaAgregada: new Date()
-    };
-
-    const nuevaLista = await prisma.lista.create({ data });
+    const nuevaLista = await prisma.listaPersonalizada.create({
+      data: {
+        nombre,
+        descripcion: descripcion ?? null,
+        esPrivada,
+        usuarioId
+      }
+    });
 
     res.status(201).json({
       message: 'Lista personalizada creada exitosamente',
@@ -352,10 +411,7 @@ export const crearListaPersonalizada = async (req: AuthRequest, res: Response): 
     });
 
   } catch (error) {
-    console.error('Error creando lista personalizada:', error);
-    res.status(500).json({
-      error: 'Error al crear lista personalizada'
-    });
+    handleControllerError(error, next, 'Error al crear lista personalizada');
   }
 };
 
@@ -363,59 +419,53 @@ export const crearListaPersonalizada = async (req: AuthRequest, res: Response): 
  * Agregar película a lista personalizada
  * POST /api/listas/personalizadas/:listaId/peliculas/:peliculaId
  */
-export const agregarAListaPersonalizada = async (req: AuthRequest, res: Response): Promise<void> => {
+export const agregarAListaPersonalizada = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { listaId, peliculaId } = req.params;
     const usuarioId = req.usuario?.id;
+    const numericListaId = parseInt(listaId, 10);
+    const numericPeliculaId = parseInt(peliculaId, 10);
+
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
+
+    if (Number.isNaN(numericListaId) || Number.isNaN(numericPeliculaId)) {
+      return next(new AppError('IDs inválidos', 400));
+    }
 
     // Verificar que la lista existe y pertenece al usuario
-    const lista = await prisma.lista.findFirst({
-      where: { id: parseInt(listaId), usuarioId, tipoLista: 'personalizada' },
-      select: {
-        id: true,
-        usuarioId: true,
-        peliculaId: true,
-        tipoLista: true,
-        nombre: true,
-        descripcion: true,
-        esPrivada: true,
-        fechaAgregada: true
-      }
+    const lista = await prisma.listaPersonalizada.findFirst({
+      where: { id: numericListaId, usuarioId }
     });
 
     if (!lista) {
-      res.status(404).json({ error: 'Lista no encontrada' });
-      return;
+      return next(new AppError('Lista no encontrada', 404));
     }
 
     // Verificar que la película existe
     const pelicula = await prisma.pelicula.findUnique({
-      where: { id: parseInt(peliculaId) }
+      where: { id: numericPeliculaId }
     });
 
     if (!pelicula) {
-      res.status(404).json({ error: 'Película no encontrada' });
-      return;
+      return next(new AppError('Película no encontrada', 404));
     }
 
     // Verificar si ya está en la lista
-    const existeEnLista = await prisma.lista.findFirst({ where: { tipoLista: 'personalizada', usuarioId, peliculaId: parseInt(peliculaId), id: parseInt(listaId) } });
+    const existeEnLista = await prisma.listaPersonalizadaItem.findFirst({
+      where: { listaId: lista.id, peliculaId: numericPeliculaId }
+    });
 
     if (existeEnLista) {
-      res.status(409).json({ error: 'La película ya está en esta lista' });
-      return;
+      return next(new AppError('La película ya está en esta lista', 409));
     }
 
     // Agregar a lista personalizada
-    await prisma.lista.create({
+    await prisma.listaPersonalizadaItem.create({
       data: {
-        tipoLista: 'personalizada',
-        usuarioId: usuarioId!,
-        peliculaId: parseInt(peliculaId),
-        fechaAgregada: new Date(),
-        nombre: lista.nombre,
-        descripcion: lista.descripcion,
-        esPrivada: lista.esPrivada
+        listaId: lista.id,
+        peliculaId: numericPeliculaId
       }
     });
 
@@ -424,10 +474,7 @@ export const agregarAListaPersonalizada = async (req: AuthRequest, res: Response
     });
 
   } catch (error) {
-    console.error('Error agregando a lista personalizada:', error);
-    res.status(500).json({
-      error: 'Error al agregar película a la lista personalizada'
-    });
+    handleControllerError(error, next, 'Error al agregar película a la lista personalizada');
   }
 };
 
@@ -435,30 +482,34 @@ export const agregarAListaPersonalizada = async (req: AuthRequest, res: Response
  * Eliminar lista personalizada
  * DELETE /api/listas/personalizadas/:listaId
  */
-export const eliminarListaPersonalizada = async (req: AuthRequest, res: Response): Promise<void> => {
+export const eliminarListaPersonalizada = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { listaId } = req.params;
     const usuarioId = req.usuario?.id;
+    const numericId = parseInt(listaId, 10);
 
-    // Verificar que la lista existe y pertenece al usuario
-    const lista = await prisma.lista.findFirst({ where: { id: parseInt(listaId), usuarioId, tipoLista: 'personalizada' } });
-
-    if (!lista) {
-      res.status(404).json({ error: 'Lista no encontrada' });
-      return;
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
     }
 
-    // Eliminar lista (las relaciones se eliminarán en cascada)
-    await prisma.lista.deleteMany({ where: { id: parseInt(listaId) } });
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('Identificador de lista inválido', 400));
+    }
+
+    // Verificar que la lista existe y pertenece al usuario
+    const lista = await prisma.listaPersonalizada.findFirst({ where: { id: numericId, usuarioId } });
+
+    if (!lista) {
+      return next(new AppError('Lista no encontrada', 404));
+    }
+
+    await prisma.listaPersonalizada.delete({ where: { id: lista.id } });
 
     res.json({
       message: 'Lista personalizada eliminada exitosamente'
     });
 
   } catch (error) {
-    console.error('Error eliminando lista personalizada:', error);
-    res.status(500).json({
-      error: 'Error al eliminar lista personalizada'
-    });
+    handleControllerError(error, next, 'Error al eliminar lista personalizada');
   }
 };

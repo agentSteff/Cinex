@@ -1,5 +1,4 @@
 import express, { Request, Response } from 'express';
-import dotenv from 'dotenv';
 import cors from 'cors';
 
 // Importar rutas (crearemos los archivos después)
@@ -7,14 +6,14 @@ import authRoutes from './routes/auth';
 import peliculasRoutes from './routes/peliculas';
 import calificacionesRoutes from './routes/calificaciones';
 import listasRoutes from './routes/listas';
-
-dotenv.config();
+import { appConfig, corsOptions } from './config/env';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = appConfig.PORT;
 
 // Middlewares
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Rutas
@@ -37,6 +36,10 @@ app.get('/', (req: Request, res: Response) => {
   });
 });
 
+// Manejo de rutas no encontradas y errores
+app.use(notFoundHandler);
+app.use(errorHandler);
+
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`🚀 Servidor corriendo en http://localhost:${PORT} (${appConfig.NODE_ENV})`);
 });

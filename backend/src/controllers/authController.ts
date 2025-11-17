@@ -1,8 +1,9 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { generarToken } from '../utils/jwt';
 import { UsuarioRegistro, UsuarioLogin } from '../types';
+import { AppError, handleControllerError } from '../middleware/errorHandler';
 
 const prisma = new PrismaClient();
 const SALT_ROUNDS = 10;
@@ -11,23 +12,17 @@ const SALT_ROUNDS = 10;
  * Registrar un nuevo usuario
  * POST /api/auth/register
  */
-export const registrar = async (req: Request, res: Response): Promise<void> => {
+export const registrar = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { email, password, username }: UsuarioRegistro = req.body;
 
     // Validaciones básicas
     if (!email || !password || !username) {
-      res.status(400).json({
-        error: 'Email, password y username son requeridos'
-      });
-      return;
+      return next(new AppError('Email, password y username son requeridos', 400));
     }
 
     if (password.length < 6) {
-      res.status(400).json({
-        error: 'El password debe tener al menos 6 caracteres'
-      });
-      return;
+      return next(new AppError('El password debe tener al menos 6 caracteres', 400));
     }
 
     // Verificar si el usuario ya existe
@@ -41,10 +36,7 @@ export const registrar = async (req: Request, res: Response): Promise<void> => {
     });
 
     if (usuarioExistente) {
-      res.status(409).json({
-        error: 'El email o username ya está registrado'
-      });
-      return;
+      return next(new AppError('El email o username ya está registrado', 409));
     }
 
     // Hashear password
@@ -76,10 +68,7 @@ export const registrar = async (req: Request, res: Response): Promise<void> => {
       }
     });
   } catch (error) {
-    console.error('Error en registro:', error);
-    res.status(500).json({
-      error: 'Error al registrar usuario'
-    });
+    handleControllerError(error, next, 'Error al registrar usuario');
   }
 };
 
@@ -88,15 +77,12 @@ export const registrar = async (req: Request, res: Response): Promise<void> => {
  * POST /api/auth/login
  * TODO: Agregar rate limiting después - no dejar que hagan muchos intentos
  */
-export const login = async (req: Request, res: Response): Promise<void> => {
+export const login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { email, password }: UsuarioLogin = req.body;
 
     if (!email || !password) {
-      res.status(400).json({
-        error: 'Email y password requeridos'
-      });
-      return;
+      return next(new AppError('Email y password requeridos', 400));
     }
 
     // Buscar usuario
@@ -105,20 +91,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     });
 
     if (!usuario) {
-      res.status(401).json({
-        error: 'Email o contraseña incorrectos'
-      });
-      return;
+      return next(new AppError('Email o contraseña incorrectos', 401));
     }
 
     // Validar password
     const passwordValido = await bcrypt.compare(password, usuario.password);
 
     if (!passwordValido) {
-      res.status(401).json({
-        error: 'Email o contraseña incorrectos'
-      });
-      return;
+      return next(new AppError('Email o contraseña incorrectos', 401));
     }
 
     // Generar token
@@ -138,10 +118,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       }
     });
   } catch (error) {
-    console.error('Error en login:', error);
-    res.status(500).json({
-      error: 'Error al iniciar sesión'
-    });
+    handleControllerError(error, next, 'Error al iniciar sesión');
   }
 };
 
@@ -149,11 +126,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
  * Obtener perfil del usuario autenticado
  * GET /api/auth/perfil (protegido)
  */
-export const obtenerPerfil = async (req: Request, res: Response): Promise<void> => {
+export const obtenerPerfil = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!req.usuario) {
-      res.status(401).json({ error: 'No autorizado' });
-      return;
+      return next(new AppError('No autorizado', 401));
     }
 
     const usuario = await prisma.usuario.findUnique({
@@ -167,13 +143,11 @@ export const obtenerPerfil = async (req: Request, res: Response): Promise<void> 
     });
 
     if (!usuario) {
-      res.status(404).json({ error: 'Usuario no encontrado' });
-      return;
+      return next(new AppError('Usuario no encontrado', 404));
     }
 
     res.json(usuario);
   } catch (error) {
-    console.error('Error obteniendo perfil:', error);
-    res.status(500).json({ error: 'Error al obtener perfil' });
+    handleControllerError(error, next, 'Error al obtener perfil');
   }
 };

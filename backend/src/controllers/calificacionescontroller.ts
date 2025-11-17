@@ -1,6 +1,7 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth';
+import { AppError, handleControllerError } from '../middleware/errorHandler';
 
 const prisma = new PrismaClient();
 
@@ -8,15 +9,12 @@ const prisma = new PrismaClient();
  * Obtener calificaciones totales de una película
  * GET /api/calificaciones/pelicula/:peliculaId
  */
-export const obtenerCalificacionesPelicula = async (req: Request, res: Response): Promise<void> => {
+export const obtenerCalificacionesPelicula = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { peliculaId } = req.params;
 
     if (!peliculaId) {
-      res.status(400).json({
-        error: 'ID de película requerido'
-      });
-      return;
+      return next(new AppError('ID de película requerido', 400));
     }
 
     const calificaciones = await prisma.calificacion.findMany({
@@ -60,10 +58,7 @@ export const obtenerCalificacionesPelicula = async (req: Request, res: Response)
     });
 
   } catch (error) {
-    console.error('Error obteniendo calificaciones:', error);
-    res.status(500).json({
-      error: 'Error al obtener calificaciones de la película'
-    });
+    handleControllerError(error, next, 'Error al obtener calificaciones de la película');
   }
 };
 
@@ -71,16 +66,17 @@ export const obtenerCalificacionesPelicula = async (req: Request, res: Response)
  * Ver la calificación que le di a una película
  * GET /api/calificaciones/mi-calificacion/:peliculaId
  */
-export const obtenerMiCalificacion = async (req: AuthRequest, res: Response): Promise<void> => {
+export const obtenerMiCalificacion = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { peliculaId } = req.params;
     const usuarioId = req.usuario?.id;
 
     if (!peliculaId) {
-      res.status(400).json({
-        error: 'ID de película requerido'
-      });
-      return;
+      return next(new AppError('ID de película requerido', 400));
+    }
+
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
     }
 
     const miCalificacion = await prisma.calificacion.findFirst({
@@ -103,10 +99,7 @@ export const obtenerMiCalificacion = async (req: AuthRequest, res: Response): Pr
     });
 
   } catch (error) {
-    console.error('Error obteniendo mi calificación:', error);
-    res.status(500).json({
-      error: 'Error al obtener tu calificación'
-    });
+    handleControllerError(error, next, 'Error al obtener tu calificación');
   }
 };
 
@@ -114,24 +107,22 @@ export const obtenerMiCalificacion = async (req: AuthRequest, res: Response): Pr
  * Calificar una película
  * POST /api/calificaciones
  */
-export const calificarPelicula = async (req: AuthRequest, res: Response): Promise<void> => {
+export const calificarPelicula = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const usuarioId = req.usuario?.id;
     const { peliculaId, puntuacion, comentario } = req.body;
 
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
+
     // Validaciones
     if (!peliculaId || !puntuacion) {
-      res.status(400).json({
-        error: 'peliculaId y puntuacion son requeridos'
-      });
-      return;
+      return next(new AppError('peliculaId y puntuacion son requeridos', 400));
     }
 
     if (puntuacion < 1 || puntuacion > 5) {
-      res.status(400).json({
-        error: 'La puntuación debe estar entre 1 y 5'
-      });
-      return;
+      return next(new AppError('La puntuación debe estar entre 1 y 5', 400));
     }
 
     // Verificar si la película existe en nuestra BD
@@ -140,10 +131,7 @@ export const calificarPelicula = async (req: AuthRequest, res: Response): Promis
     });
 
     if (!pelicula) {
-      res.status(404).json({
-        error: 'Película no encontrada'
-      });
-      return;
+      return next(new AppError('Película no encontrada', 404));
     }
 
     // Verificar si ya existe una calificación del usuario
@@ -155,10 +143,7 @@ export const calificarPelicula = async (req: AuthRequest, res: Response): Promis
     });
 
     if (calificacionExistente) {
-      res.status(409).json({
-        error: 'Ya has calificado esta película. Usa PUT para modificar.'
-      });
-      return;
+      return next(new AppError('Ya has calificado esta película. Usa PUT para modificar.', 409));
     }
 
     // Crear calificación
@@ -184,10 +169,7 @@ export const calificarPelicula = async (req: AuthRequest, res: Response): Promis
     });
 
   } catch (error) {
-    console.error('Error calificando película:', error);
-    res.status(500).json({
-      error: 'Error al calificar la película'
-    });
+    handleControllerError(error, next, 'Error al calificar la película');
   }
 };
 
@@ -195,24 +177,22 @@ export const calificarPelicula = async (req: AuthRequest, res: Response): Promis
  * Modificar calificación
  * PUT /api/calificaciones/:id
  */
-export const modificarCalificacion = async (req: AuthRequest, res: Response): Promise<void> => {
+export const modificarCalificacion = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
     const usuarioId = req.usuario?.id;
     const { puntuacion, comentario } = req.body;
 
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
+
     if (!puntuacion && !comentario) {
-      res.status(400).json({
-        error: 'Debe proporcionar puntuación o comentario para modificar'
-      });
-      return;
+      return next(new AppError('Debe proporcionar puntuación o comentario para modificar', 400));
     }
 
     if (puntuacion && (puntuacion < 1 || puntuacion > 5)) {
-      res.status(400).json({
-        error: 'La puntuación debe estar entre 1 y 5'
-      });
-      return;
+      return next(new AppError('La puntuación debe estar entre 1 y 5', 400));
     }
 
     // Verificar que la calificación existe y pertenece al usuario
@@ -224,10 +204,7 @@ export const modificarCalificacion = async (req: AuthRequest, res: Response): Pr
     });
 
     if (!calificacionExistente) {
-      res.status(404).json({
-        error: 'Calificación no encontrada o no tienes permisos'
-      });
-      return;
+      return next(new AppError('Calificación no encontrada o no tienes permisos', 404));
     }
 
     // Actualizar calificación
@@ -253,10 +230,7 @@ export const modificarCalificacion = async (req: AuthRequest, res: Response): Pr
     });
 
   } catch (error) {
-    console.error('Error modificando calificación:', error);
-    res.status(500).json({
-      error: 'Error al modificar la calificación'
-    });
+    handleControllerError(error, next, 'Error al modificar la calificación');
   }
 };
 
@@ -264,10 +238,14 @@ export const modificarCalificacion = async (req: AuthRequest, res: Response): Pr
  * Eliminar calificación
  * DELETE /api/calificaciones/:id
  */
-export const eliminarCalificacion = async (req: AuthRequest, res: Response): Promise<void> => {
+export const eliminarCalificacion = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
     const usuarioId = req.usuario?.id;
+
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
 
     // Verificar que la calificación existe y pertenece al usuario
     const calificacionExistente = await prisma.calificacion.findFirst({
@@ -278,10 +256,7 @@ export const eliminarCalificacion = async (req: AuthRequest, res: Response): Pro
     });
 
     if (!calificacionExistente) {
-      res.status(404).json({
-        error: 'Calificación no encontrada o no tienes permisos'
-      });
-      return;
+      return next(new AppError('Calificación no encontrada o no tienes permisos', 404));
     }
 
     // Eliminar calificación
@@ -294,10 +269,7 @@ export const eliminarCalificacion = async (req: AuthRequest, res: Response): Pro
     });
 
   } catch (error) {
-    console.error('Error eliminando calificación:', error);
-    res.status(500).json({
-      error: 'Error al eliminar la calificación'
-    });
+    handleControllerError(error, next, 'Error al eliminar la calificación');
   }
 };
 
