@@ -1,46 +1,45 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
+// Tipos de Películas
+export interface PeliculaTMDB {
+  titulo: string;
+  año: number | null;
+  sinopsis: string;
+  imagenUrl: string | null;
+  tmdbId: number;
+  calificacionTMDB?: number;
+}
 
-import authRoutes from '../routes/auth';
-import peliculasRoutes from '../routes/peliculas';
-import calificacionesRoutes from '../routes/calificaciones';
-import listasRoutes from '../routes/listas';
+// Tipos de Usuario
+export interface UsuarioPayload {
+  id: number;
+  email: string;
+  username: string;
+}
 
-dotenv.config();
+export interface UsuarioRegistro {
+  email: string;
+  password: string;
+  username: string;
+}
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+export interface UsuarioLogin {
+  email: string;
+  password: string;
+}
 
-// Middlewares
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000', // ajustado a tu Vite
-    credentials: true,
-  })
-);
-app.use(express.json());
+// Tipos de Calificación
+export interface CalificacionCreate {
+  peliculaId: number;
+  puntuacion: number; // 1-5
+  comentario?: string | null;
+}
 
-// Rutas de la API
-app.use('/api/auth', authRoutes);
-app.use('/api/peliculas', peliculasRoutes);
-app.use('/api/calificaciones', calificacionesRoutes);
-app.use('/api/listas', listasRoutes);
+// Tipos de Lista
+export type TipoLista = 'por_ver' | 'vistas' | 'favoritas' | 'personalizada';
 
-// Endpoint base de salud
-app.get('/', (req: Request, res: Response) => {
-  res.json({
-    message: '🎬 CineConnect API funcionando!',
-    version: '1.0.0',
-    endpoints: {
-      auth: '/api/auth',
-      peliculas: '/api/peliculas',
-      calificaciones: '/api/calificaciones',
-      listas: '/api/listas',
-    },
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-});
+export interface ListaCreate {
+  peliculaId?: number | null;
+  tipoLista: TipoLista;
+  nombre?: string | null; // usado cuando tipoLista === 'personalizada'
+  descripcion?: string | null;
+  esPrivada?: boolean;
+}

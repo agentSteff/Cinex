@@ -32,7 +32,7 @@ export const obtenerCalificacionesPelicula = async (req: Request, res: Response)
         }
       },
       orderBy: {
-        fechaCreacion: 'desc'
+        fechaCalificacion: 'desc'
       }
     });
 
@@ -53,7 +53,8 @@ export const obtenerCalificacionesPelicula = async (req: Request, res: Response)
         id: cal.id,
         puntuacion: cal.puntuacion,
         comentario: cal.comentario,
-        fechaCreacion: cal.fechaCreacion,
+        fechaCalificacion: cal.fechaCalificacion,
+        fechaActualizacion: cal.fechaActualizacion,
         usuario: cal.usuario
       }))
     });
@@ -91,7 +92,7 @@ export const obtenerMiCalificacion = async (req: AuthRequest, res: Response): Pr
         id: true,
         puntuacion: true,
         comentario: true,
-        fechaCreacion: true,
+        fechaCalificacion: true,
         fechaActualizacion: true
       }
     });

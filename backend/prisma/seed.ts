@@ -7,11 +7,8 @@ async function main() {
   console.log('🌱 Iniciando seed de la base de datos...');
 
   // Limpiar datos existentes (opcional)
-  console.log('🧹 Limpiando datos antiguos...');
-  await prisma.lista.deleteMany();
-  await prisma.calificacion.deleteMany();
-  await prisma.pelicula.deleteMany();
-  await prisma.usuario.deleteMany();
+  console.log('🧹 Limpiando datos antiguos (TRUNCATE)...');
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "listas", "calificaciones", "peliculas", "usuarios" RESTART IDENTITY CASCADE');
 
   // ==========================================
   // CREAR USUARIOS DE PRUEBA
@@ -165,23 +162,54 @@ async function main() {
   await prisma.lista.createMany({
     data: [
       // Usuario 1 - Por ver
-      { usuarioId: usuario1.id, peliculaId: pelicula4.id, tipoLista: 'POR_VER' },
-      { usuarioId: usuario1.id, peliculaId: pelicula5.id, tipoLista: 'POR_VER' },
+      { usuarioId: usuario1.id, peliculaId: pelicula4.id, tipoLista: 'por_ver' },
+      { usuarioId: usuario1.id, peliculaId: pelicula5.id, tipoLista: 'por_ver' },
 
       // Usuario 1 - Vistas
-      { usuarioId: usuario1.id, peliculaId: pelicula1.id, tipoLista: 'VISTA' },
-      { usuarioId: usuario1.id, peliculaId: pelicula2.id, tipoLista: 'VISTA' },
+      { usuarioId: usuario1.id, peliculaId: pelicula1.id, tipoLista: 'vistas' },
+      { usuarioId: usuario1.id, peliculaId: pelicula2.id, tipoLista: 'vistas' },
+
+      // Usuario 1 - Favoritas
+      { usuarioId: usuario1.id, peliculaId: pelicula1.id, tipoLista: 'favoritas' },
+      { usuarioId: usuario1.id, peliculaId: pelicula3.id, tipoLista: 'favoritas' },
 
       // Usuario 2 - Por ver
-      { usuarioId: usuario2.id, peliculaId: pelicula6.id, tipoLista: 'POR_VER' },
+      { usuarioId: usuario2.id, peliculaId: pelicula6.id, tipoLista: 'por_ver' },
 
       // Usuario 2 - Vistas
-      { usuarioId: usuario2.id, peliculaId: pelicula3.id, tipoLista: 'VISTA' },
-      { usuarioId: usuario2.id, peliculaId: pelicula4.id, tipoLista: 'VISTA' },
+      { usuarioId: usuario2.id, peliculaId: pelicula3.id, tipoLista: 'vistas' },
+      { usuarioId: usuario2.id, peliculaId: pelicula4.id, tipoLista: 'vistas' },
+
+      // Usuario 2 - Favoritas
+      { usuarioId: usuario2.id, peliculaId: pelicula5.id, tipoLista: 'favoritas' },
+
+      // Usuario 3 - Por ver
+      { usuarioId: usuario3.id, peliculaId: pelicula2.id, tipoLista: 'por_ver' },
+
+      // Usuario 3 - Favoritas
+      { usuarioId: usuario3.id, peliculaId: pelicula6.id, tipoLista: 'favoritas' },
+
+      // Usuario 3 - Lista personalizada "Noches Sci-Fi"
+      {
+        usuarioId: usuario3.id,
+        peliculaId: pelicula6.id,
+        tipoLista: 'personalizada',
+        nombre: 'Noches Sci-Fi',
+        descripcion: 'Películas para maratón de ciencia ficción',
+        esPrivada: false,
+      },
+      {
+        usuarioId: usuario3.id,
+        peliculaId: pelicula3.id,
+        tipoLista: 'personalizada',
+        nombre: 'Noches Sci-Fi',
+        descripcion: 'Películas para maratón de ciencia ficción',
+        esPrivada: false,
+      }
     ],
   });
 
-  console.log(`✅ ${7} entradas de listas creadas`);
+  console.log(`✅ ${13} entradas de listas creadas`);
 
   console.log('');
   console.log('✅ Seed completado exitosamente! 🎉');
@@ -190,7 +218,7 @@ async function main() {
   console.log('   - 3 usuarios creados');
   console.log('   - 6 películas creadas');
   console.log('   - 9 calificaciones creadas');
-  console.log('   - 7 listas personales creadas');
+  console.log('   - 13 listas personales creadas');
   console.log('');
   console.log('🔑 Credenciales de prueba:');
   console.log('   Email: juan@test.com');

@@ -44,3 +44,6 @@ export const autenticarJWT = (req: Request, res: Response, next: NextFunction): 
     });
   }
 };
+
+// Tipo reutilizable para requests autenticadas
+export type AuthRequest = Request & { usuario?: UsuarioPayload };

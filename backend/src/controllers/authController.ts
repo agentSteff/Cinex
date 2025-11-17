@@ -13,35 +13,36 @@ const SALT_ROUNDS = 10;
  */
 export const registrar = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, username } = req.body as UsuarioRegistro;
+    const { email, password, username }: UsuarioRegistro = req.body;
 
     // Validaciones básicas
     if (!email || !password || !username) {
       res.status(400).json({
-        error: 'Email, password y username son requeridos',
+        error: 'Email, password y username son requeridos'
       });
       return;
     }
 
     if (password.length < 6) {
       res.status(400).json({
-        error: 'El password debe tener al menos 6 caracteres',
+        error: 'El password debe tener al menos 6 caracteres'
       });
       return;
     }
 
-    const emailNormalizado = email.toLowerCase();
-
-    // Verificar si el usuario ya existe (por email o username)
+    // Verificar si el usuario ya existe
     const usuarioExistente = await prisma.usuario.findFirst({
       where: {
-        OR: [{ email: emailNormalizado }, { username }],
-      },
+        OR: [
+          { email },
+          { username }
+        ]
+      }
     });
 
     if (usuarioExistente) {
       res.status(409).json({
-        error: 'El email o username ya está registrado',
+        error: 'El email o username ya está registrado'
       });
       return;
     }
@@ -52,16 +53,17 @@ export const registrar = async (req: Request, res: Response): Promise<void> => {
     // Crear usuario
     const nuevoUsuario = await prisma.usuario.create({
       data: {
-        email: emailNormalizado,
-        password: hashedPassword, // el campo en Prisma se llama "password"
-        username,
-      },
+        email: email.toLowerCase(),
+        password: hashedPassword,
+        username
+      }
     });
 
     // Generar token
     const token = generarToken({
       id: nuevoUsuario.id,
       email: nuevoUsuario.email,
+      username: nuevoUsuario.username
     });
 
     res.status(201).json({
@@ -70,13 +72,13 @@ export const registrar = async (req: Request, res: Response): Promise<void> => {
       usuario: {
         id: nuevoUsuario.id,
         email: nuevoUsuario.email,
-        username: nuevoUsuario.username,
-      },
+        username: nuevoUsuario.username
+      }
     });
   } catch (error) {
     console.error('Error en registro:', error);
     res.status(500).json({
-      error: 'Error al registrar usuario',
+      error: 'Error al registrar usuario'
     });
   }
 };
@@ -84,38 +86,37 @@ export const registrar = async (req: Request, res: Response): Promise<void> => {
 /**
  * Login de usuario
  * POST /api/auth/login
+ * TODO: Agregar rate limiting después - no dejar que hagan muchos intentos
  */
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body as UsuarioLogin;
+    const { email, password }: UsuarioLogin = req.body;
 
     if (!email || !password) {
       res.status(400).json({
-        error: 'Email y password requeridos',
+        error: 'Email y password requeridos'
       });
       return;
     }
 
-    const emailNormalizado = email.toLowerCase();
-
     // Buscar usuario
     const usuario = await prisma.usuario.findUnique({
-      where: { email: emailNormalizado },
+      where: { email: email.toLowerCase() }
     });
 
     if (!usuario) {
       res.status(401).json({
-        error: 'Email o contraseña incorrectos',
+        error: 'Email o contraseña incorrectos'
       });
       return;
     }
 
-    // Validar password (campo "password" en BD contiene el hash)
+    // Validar password
     const passwordValido = await bcrypt.compare(password, usuario.password);
 
     if (!passwordValido) {
       res.status(401).json({
-        error: 'Email o contraseña incorrectos',
+        error: 'Email o contraseña incorrectos'
       });
       return;
     }
@@ -124,6 +125,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const token = generarToken({
       id: usuario.id,
       email: usuario.email,
+      username: usuario.username
     });
 
     res.json({
@@ -132,13 +134,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       usuario: {
         id: usuario.id,
         email: usuario.email,
-        username: usuario.username,
-      },
+        username: usuario.username
+      }
     });
   } catch (error) {
     console.error('Error en login:', error);
     res.status(500).json({
-      error: 'Error al iniciar sesión',
+      error: 'Error al iniciar sesión'
     });
   }
 };
@@ -149,23 +151,19 @@ export const login = async (req: Request, res: Response): Promise<void> => {
  */
 export const obtenerPerfil = async (req: Request, res: Response): Promise<void> => {
   try {
-    // req.usuario viene del middleware autenticarJWT
-    // @ts-ignore
-    const usuarioAuth = req.usuario;
-
-    if (!usuarioAuth) {
+    if (!req.usuario) {
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
 
     const usuario = await prisma.usuario.findUnique({
-      where: { id: usuarioAuth.id },
+      where: { id: req.usuario.id },
       select: {
         id: true,
         email: true,
         username: true,
-        fechaCreacion: true,
-      },
+        fechaCreacion: true
+      }
     });
 
     if (!usuario) {
@@ -173,9 +171,7 @@ export const obtenerPerfil = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    res.json({
-      usuario,
-    });
+    res.json(usuario);
   } catch (error) {
     console.error('Error obteniendo perfil:', error);
     res.status(500).json({ error: 'Error al obtener perfil' });

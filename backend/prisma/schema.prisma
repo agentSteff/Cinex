@@ -59,6 +59,8 @@ model Calificacion {
   peliculaId         Int      @map("pelicula_id")
   puntuacion         Int      // Escala del 1 al 5
   fechaCalificacion  DateTime @default(now()) @map("fecha_calificacion")
+  comentario         String?  @db.Text
+  fechaActualizacion DateTime?
   
   // Relaciones
   usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
@@ -73,19 +75,23 @@ model Calificacion {
 
 /// Listas personales: por_ver y vistas
 model Lista {
-  id            Int      @id @default(autoincrement())
-  usuarioId     Int      @map("usuario_id")
-  peliculaId    Int      @map("pelicula_id")
-  tipoLista     String   @map("tipo_lista") @db.VarChar(20)  // Valores: 'por_ver' o 'vistas'
-  fechaAgregada DateTime @default(now()) @map("fecha_agregada")
+  id            Int       @id @default(autoincrement())
+  usuarioId     Int       @map("usuario_id")
+  peliculaId    Int?      @map("pelicula_id")
+  tipoLista     String    @map("tipo_lista") @db.VarChar(20)  // Valores: 'por_ver', 'vistas' o 'personalizada'
+  nombre        String?   @db.VarChar(255)
+  descripcion   String?   @db.Text
+  esPrivada     Boolean   @default(false) @map("es_privada")
+  fechaAgregada DateTime  @default(now()) @map("fecha_agregada")
   
   // Relaciones
-  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  pelicula  Pelicula @relation(fields: [peliculaId], references: [id], onDelete: Cascade)
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  pelicula  Pelicula? @relation(fields: [peliculaId], references: [id], onDelete: Cascade)
   
   // Restricción: Una película solo puede estar una vez en cada tipo de lista por usuario
   @@unique([usuarioId, peliculaId, tipoLista])
   @@map("listas")
   @@index([usuarioId], name: "idx_listas_usuario")
   @@index([peliculaId], name: "idx_listas_pelicula")
+  @@index([tipoLista], name: "idx_listas_tipo")
 }
