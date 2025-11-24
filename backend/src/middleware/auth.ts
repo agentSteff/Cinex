@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 import { verificarToken } from '../utils/jwt';
 import { UsuarioPayload } from '../types';
 
-// TODO: revisar si hay que agregar más validaciones aquí - Carlos
 // Extender Request para incluir usuario
 declare global {
   namespace Express {
@@ -28,7 +27,7 @@ export const autenticarJWT = (req: Request, res: Response, next: NextFunction): 
       return;
     }
 
-    const token = authHeader.substring(7); // Remover "Bearer "
+    const token = authHeader.substring(7);
     
     // Verificar y decodificar token
     const usuario = verificarToken(token);
@@ -38,7 +37,7 @@ export const autenticarJWT = (req: Request, res: Response, next: NextFunction): 
     
     next();
   } catch (error) {
-    // console.log('Error en autenticación:', error); // debug
+    console.warn('Error en autenticación:', error instanceof Error ? error.message : error);
     res.status(401).json({
       error: 'Token inválido o expirado'
     });

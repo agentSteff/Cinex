@@ -2,99 +2,72 @@ import { useState, FormEvent } from 'react';
 import { Film, Mail, Lock, User, ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { useAuth } from '../contexts/AuthContext';
+import api from '../lib/api';
+import { AuthResponse } from '../types/api';
 
-interface LoginPageProps {
-  onLogin: () => void;
-}
-
-export function LoginPage({ onLogin }: LoginPageProps) {
-  const [isLogin, setIsLogin] = useState(true);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [registerName, setRegisterName] = useState('');
-  const [registerEmail, setRegisterEmail] = useState('');
-  const [registerPassword, setRegisterPassword] = useState('');
+export function LoginPage() {
+  const { login } = useAuth();
+  const [esLogin, setEsLogin] = useState(true);
+  const [emailLogin, setEmailLogin] = useState('');
+  const [passwordLogin, setPasswordLogin] = useState('');
+  const [nombreRegistro, setNombreRegistro] = useState('');
+  const [emailRegistro, setEmailRegistro] = useState('');
+  const [passwordRegistro, setPasswordRegistro] = useState('');
 
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [cargando, setCargando] = useState(false);
 
-  const handleLogin = async (e: FormEvent) => {
+  const manejarLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    setCargando(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: loginEmail,
-          password: loginPassword,
-        }),
+      const data = await api.post<AuthResponse>('/api/auth/login', {
+        email: emailLogin,
+        password: passwordLogin,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al iniciar sesión');
-      }
-
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('usuario', JSON.stringify(data.usuario));
-
-      onLogin();
+      // Llamar a la función login del AuthContext
+      login(data.usuario, data.token);
     } catch (err: any) {
+      console.error('[LoginPage] Error de login:', err);
       setError(err.message || 'Error al iniciar sesión');
     } finally {
-      setLoading(false);
+      setCargando(false);
     }
   };
 
-  const handleRegister = async (e: FormEvent) => {
+  const manejarRegistro = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    setCargando(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: registerName,
-          email: registerEmail,
-          password: registerPassword,
-        }),
+      const data = await api.post<AuthResponse>('/api/auth/register', {
+        username: nombreRegistro,
+        email: emailRegistro,
+        password: passwordRegistro,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al registrarse');
-      }
-
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('usuario', JSON.stringify(data.usuario));
-
-      onLogin();
+      // Llamar a la función login del AuthContext
+      login(data.usuario, data.token);
     } catch (err: any) {
       setError(err.message || 'Error al registrarse');
     } finally {
-      setLoading(false);
+      setCargando(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-black flex">
-      {/* Left Side - Branding */}
+      {/* Lado Izquierdo - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-black via-yellow-950/20 to-black relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(234,179,8,0.1),transparent_50%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(234,179,8,0.05),transparent_50%)]" />
 
-        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
+        <div className="relative z-10 flex flex-col justify-center items-center p-12 w-full min-h-full">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-yellow-500 rounded-lg">
               <Film className="size-8 text-black" />
@@ -127,47 +100,43 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </div>
           </div>
 
-          <div className="flex gap-8 text-gray-500 text-sm">
-            <button className="hover:text-yellow-500 transition-colors">Términos</button>
-            <button className="hover:text-yellow-500 transition-colors">Privacidad</button>
-            <button className="hover:text-yellow-500 transition-colors">Ayuda</button>
-          </div>
+          <div className="flex gap-8 text-gray-500 text-sm"/>
         </div>
       </div>
 
-      {/* Right Side - Forms */}
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
+      {/* Lado Derecho - Formularios */}
+      <div className="flex items-center justify-center lg:justify-start w-full p-6 lg:w-1/2 lg:pl-8 lg:pr-12 lg:py-12">
         <div className="w-full max-w-md">
-          {/* Mobile Logo */}
+          {/* Logo Móvil */}
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
             <div className="p-2 bg-yellow-500 rounded-lg">
               <Film className="size-6 text-black" />
             </div>
-            <span className="text-2xl text-white tracking-tight">CinéList</span>
+            <span className="text-2xl text-white tracking-tight">Cinex</span>
           </div>
 
-          {/* Toggle Buttons */}
+          {/* Botones Toggle */}
           <div className="flex gap-2 p-1 bg-white/5 rounded-lg mb-8">
             <button
-              onClick={() => setIsLogin(true)}
-              className={`flex-1 py-3 rounded-md transition-all ${
-                isLogin ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+              onClick={() => setEsLogin(true)}
+              className={`flex-1 py-3 rounded-md transition-all cursor-pointer ${
+                esLogin ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
               }`}
             >
               Iniciar Sesión
             </button>
             <button
-              onClick={() => setIsLogin(false)}
-              className={`flex-1 py-3 rounded-md transition-all ${
-                !isLogin ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+              onClick={() => setEsLogin(false)}
+              className={`flex-1 py-3 rounded-md transition-all cursor-pointer ${
+                !esLogin ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
               }`}
             >
               Registrarse
             </button>
           </div>
 
-          {isLogin ? (
-            <form onSubmit={handleLogin} className="space-y-5">
+          {esLogin ? (
+            <form onSubmit={manejarLogin} className="space-y-5">
               <div>
                 <h2 className="text-white mb-1">Bienvenido de nuevo</h2>
                 <p className="text-gray-400">Ingresa tus credenciales para continuar</p>
@@ -179,8 +148,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   <Input
                     type="email"
                     placeholder="Correo electrónico"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
+                    value={emailLogin}
+                    onChange={(e) => setEmailLogin(e.target.value)}
                     className="pl-12 bg-white/5 border-white/10 text-white placeholder:text-gray-500 h-14 rounded-lg focus:border-yellow-500"
                     required
                   />
@@ -191,31 +160,21 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   <Input
                     type="password"
                     placeholder="Contraseña"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
+                    value={passwordLogin}
+                    onChange={(e) => setPasswordLogin(e.target.value)}
                     className="pl-12 bg-white/5 border-white/10 text-white placeholder:text-gray-500 h-14 rounded-lg focus:border-yellow-500"
                     required
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-sm">
-                <label className="flex items-center gap-2 text-gray-400 cursor-pointer">
-                  <input type="checkbox" className="rounded border-white/20 bg.white/5" />
-                  Recordarme
-                </label>
-                <button type="button" className="text-yellow-500 hover:text-yellow-400">
-                  ¿Olvidaste tu contraseña?
-                </button>
-              </div>
-
               <Button
                 type="submit"
-                disabled={loading}
-                className="w-full h-14 bg-yellow-500 hover:bg-yellow-600 text-black rounded-lg gap-2 group"
+                disabled={cargando}
+                className="w-full h-14 bg-yellow-500 hover:bg-yellow-600 text-black rounded-lg gap-2 group cursor-pointer"
               >
-                {loading ? 'Ingresando...' : 'Iniciar Sesión'}
-                {!loading && (
+                {cargando ? 'Ingresando...' : 'Iniciar Sesión'}
+                {!cargando && (
                   <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
                 )}
               </Button>
@@ -223,7 +182,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
             </form>
           ) : (
-            <form onSubmit={handleRegister} className="space-y-5">
+            <form onSubmit={manejarRegistro} className="space-y-5">
               <div>
                 <h2 className="text-white mb-1">Crear cuenta nueva</h2>
                 <p className="text-gray-400">Únete a nuestra comunidad cinematográfica</p>
@@ -235,8 +194,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   <Input
                     type="text"
                     placeholder="Nombre completo"
-                    value={registerName}
-                    onChange={(e) => setRegisterName(e.target.value)}
+                    value={nombreRegistro}
+                    onChange={(e) => setNombreRegistro(e.target.value)}
                     className="pl-12 bg-white/5 border-white/10 text-white placeholder:text-gray-500 h-14 rounded-lg focus:border-yellow-500"
                     required
                   />
@@ -247,8 +206,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   <Input
                     type="email"
                     placeholder="Correo electrónico"
-                    value={registerEmail}
-                    onChange={(e) => setRegisterEmail(e.target.value)}
+                    value={emailRegistro}
+                    onChange={(e) => setEmailRegistro(e.target.value)}
                     className="pl-12 bg-white/5 border-white/10 text-white placeholder:text-gray-500 h-14 rounded-lg focus:border-yellow-500"
                     required
                   />
@@ -259,37 +218,21 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   <Input
                     type="password"
                     placeholder="Contraseña"
-                    value={registerPassword}
-                    onChange={(e) => setRegisterPassword(e.target.value)}
+                    value={passwordRegistro}
+                    onChange={(e) => setPasswordRegistro(e.target.value)}
                     className="pl-12 bg-white/5 border-white/10 text-white placeholder:text-gray-500 h-14 rounded-lg focus:border-yellow-500"
                     required
                   />
                 </div>
               </div>
 
-              <div className="text-sm">
-                <label className="flex items-start gap-2 text-gray-400 cursor-pointer">
-                  <input type="checkbox" className="mt-1 rounded border-white/20 bg-white/5" required />
-                  <span>
-                    Acepto los{' '}
-                    <button type="button" className="text-yellow-500 hover:text-yellow-400">
-                      términos y condiciones
-                    </button>{' '}
-                    y la{' '}
-                    <button type="button" className="text-yellow-500 hover:text-yellow-400">
-                      política de privacidad
-                    </button>
-                  </span>
-                </label>
-              </div>
-
               <Button
                 type="submit"
-                disabled={loading}
-                className="w-full h-14 bg-yellow-500 hover:bg-yellow-600 text-black rounded-lg gap-2 group"
+                disabled={cargando}
+                className="w-full h-14 bg-yellow-500 hover:bg-yellow-600 text-black rounded-lg gap-2 group cursor-pointer"
               >
-                {loading ? 'Registrando...' : 'Crear Cuenta'}
-                {!loading && (
+                {cargando ? 'Registrando...' : 'Crear Cuenta'}
+                {!cargando && (
                   <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
                 )}
               </Button>
@@ -298,33 +241,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </form>
           )}
 
-          <div className="mt-8">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/10" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-black text-gray-500">O continúa con</span>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-12 bg-white/5 border-white/10 text.white hover:bg-white/10 hover:border-yellow-500/50"
-              >
-                Google
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-12 bg-white/5 border-white/10 text.white hover:bg-white/10 hover:border-yellow-500/50"
-              >
-                Apple
-              </Button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import {
   agregarAPorVer,
   marcarComoVista,
   removerDePorVer,
+  removerDeVistas,
   crearListaPersonalizada,
   agregarAListaPersonalizada,
   eliminarListaPersonalizada
@@ -26,6 +27,7 @@ router.delete('/por-ver/:peliculaId', removerDePorVer);
 
 // Marcar como vista
 router.post('/marcar-vista/:peliculaId', marcarComoVista);
+router.delete('/vistas/:peliculaId', removerDeVistas);
 
 // Listas personalizadas
 router.post('/personalizadas', crearListaPersonalizada);

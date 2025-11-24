@@ -6,6 +6,9 @@ export interface PeliculaTMDB {
   imagenUrl: string | null;
   tmdbId: number;
   calificacionTMDB?: number;
+  duracion?: number;
+  genero?: string;
+  director?: string;
 }
 
 // Tipos de Usuario
@@ -42,4 +45,34 @@ export interface ListaCreate {
   nombre?: string | null; // usado cuando tipoLista === 'personalizada'
   descripcion?: string | null;
   esPrivada?: boolean;
+}
+
+export interface RecommendationRequest {
+  userPreferences: string;
+  watchedMovies: string[];
+  favoriteGenres: string[];
+}
+
+export interface MovieRecommendation {
+  title: string;
+  year: number;
+  genre: string;
+  director: string;
+  rating: number;
+  description: string;
+  reason: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  conversation: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+}
+
+export interface ChatResponse {
+  response: string;
+  movies: MovieRecommendation[];
+  timestamp: string;
 }

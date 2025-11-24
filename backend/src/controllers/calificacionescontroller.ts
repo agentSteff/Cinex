@@ -2,8 +2,54 @@ import { NextFunction, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth';
 import { AppError, handleControllerError } from '../middleware/errorHandler';
+import { obtenerPeliculaDetalle } from '../utils/tmdbService';
 
 const prisma = new PrismaClient();
+
+// Helper: resolver película por ID de BD o tmdbId (ambos pasados como numéricos). Si no se encuentra,
+// intentar obtener de TMDB y persistir, retornando el registro de BD.
+async function resolveOrCreatePeliculaByIdOrTmdb(numericId: number) {
+  if (Number.isNaN(numericId)) return null;
+
+  // Intentar primero con ID de BD
+  let pelicula = await prisma.pelicula.findUnique({ where: { id: numericId } });
+  if (pelicula) return pelicula;
+
+  // Intentar con tmdbId
+  pelicula = await prisma.pelicula.findUnique({ where: { tmdbId: numericId } });
+  if (pelicula) return pelicula;
+
+  // Intentar obtener de TMDB y crear en BD
+  const detalle = await obtenerPeliculaDetalle(numericId);
+  if (!detalle) return null;
+
+  const nueva = await prisma.pelicula.create({
+    data: {
+      titulo: detalle.titulo,
+      tmdbId: detalle.tmdbId,
+      año: detalle.año ?? null,
+      genero: detalle.genero ?? null,
+      director: detalle.director ?? null,
+      sinopsis: detalle.sinopsis ?? null,
+      imagenUrl: detalle.imagenUrl ?? null
+    }
+  });
+
+  return nueva;
+}
+
+// Helper: resolver ID de película para operaciones de solo lectura sin crear nuevas entradas.
+async function resolvePeliculaIdForRead(numericId: number) {
+  if (Number.isNaN(numericId)) return null;
+
+  const peliculaById = await prisma.pelicula.findUnique({ where: { id: numericId } });
+  if (peliculaById) return peliculaById.id;
+
+  const peliculaByTmdb = await prisma.pelicula.findUnique({ where: { tmdbId: numericId } });
+  if (peliculaByTmdb) return peliculaByTmdb.id;
+
+  return null;
+}
 
 /**
  * Obtener calificaciones totales de una película
@@ -17,9 +63,18 @@ export const obtenerCalificacionesPelicula = async (req: Request, res: Response,
       return next(new AppError('ID de película requerido', 400));
     }
 
+    const numericId = parseInt(peliculaId, 10);
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('ID de película inválido', 400));
+    }
+
+    // Resolver ID de película si se pasó un tmdbId
+    const peliculaResolved = await resolveOrCreatePeliculaByIdOrTmdb(numericId);
+    const targetPeliculaId = peliculaResolved ? peliculaResolved.id : numericId;
+
     const calificaciones = await prisma.calificacion.findMany({
       where: {
-        peliculaId: parseInt(peliculaId)
+        peliculaId: targetPeliculaId
       },
       include: {
         usuario: {
@@ -41,12 +96,10 @@ export const obtenerCalificacionesPelicula = async (req: Request, res: Response,
       : 0;
 
     res.json({
-      peliculaId: parseInt(peliculaId),
-      estadisticas: {
-        totalCalificaciones: total,
-        promedio: Number(promedio.toFixed(2)),
-        distribucion: calcularDistribucion(calificaciones)
-      },
+      peliculaId: numericId,
+      promedio: Number(promedio.toFixed(2)),
+      total: total,
+      distribucion: calcularDistribucion(calificaciones),
       calificaciones: calificaciones.map(cal => ({
         id: cal.id,
         puntuacion: cal.puntuacion,
@@ -79,9 +132,18 @@ export const obtenerMiCalificacion = async (req: AuthRequest, res: Response, nex
       return next(new AppError('No autorizado', 401));
     }
 
+    // Resolver ID de película si se pasó un tmdbId (no crear nueva película aquí)
+    const numericId = parseInt(peliculaId, 10);
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('ID de película inválido', 400));
+    }
+
+    const peliculaResolved = await prisma.pelicula.findUnique({ where: { tmdbId: numericId } });
+    const targetPeliculaId = peliculaResolved ? peliculaResolved.id : numericId;
+
     const miCalificacion = await prisma.calificacion.findFirst({
       where: {
-        peliculaId: parseInt(peliculaId),
+        peliculaId: targetPeliculaId,
         usuarioId: usuarioId
       },
       select: {
@@ -93,10 +155,7 @@ export const obtenerMiCalificacion = async (req: AuthRequest, res: Response, nex
       }
     });
 
-    res.json({
-      peliculaId: parseInt(peliculaId),
-      miCalificacion: miCalificacion || null
-    });
+    res.json(miCalificacion || null);
 
   } catch (error) {
     handleControllerError(error, next, 'Error al obtener tu calificación');
@@ -125,11 +184,13 @@ export const calificarPelicula = async (req: AuthRequest, res: Response, next: N
       return next(new AppError('La puntuación debe estar entre 1 y 5', 400));
     }
 
-    // Verificar si la película existe en nuestra BD
-    const pelicula = await prisma.pelicula.findUnique({
-      where: { id: parseInt(peliculaId) }
-    });
+    // Resolver película por ID de BD o tmdbId, creando desde TMDB si es necesario
+    const numericId = parseInt(String(peliculaId), 10);
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('peliculaId inválido', 400));
+    }
 
+    const pelicula = await resolveOrCreatePeliculaByIdOrTmdb(numericId);
     if (!pelicula) {
       return next(new AppError('Película no encontrada', 404));
     }
@@ -137,7 +198,7 @@ export const calificarPelicula = async (req: AuthRequest, res: Response, next: N
     // Verificar si ya existe una calificación del usuario
     const calificacionExistente = await prisma.calificacion.findFirst({
       where: {
-        peliculaId: parseInt(peliculaId),
+        peliculaId: pelicula.id,
         usuarioId: usuarioId
       }
     });
@@ -151,7 +212,7 @@ export const calificarPelicula = async (req: AuthRequest, res: Response, next: N
       data: {
         puntuacion: puntuacion,
         comentario: comentario || null,
-        peliculaId: parseInt(peliculaId),
+        peliculaId: pelicula.id,
         usuarioId: usuarioId!
       },
       include: {
@@ -282,4 +343,49 @@ const calcularDistribucion = (calificaciones: any[]) => {
   });
 
   return distribucion;
+};
+
+/**
+ * Obtener estadísticas (promedio y total) de una película
+ * GET /api/calificaciones/estadisticas/:peliculaId
+ */
+export const obtenerEstadisticasPelicula = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { peliculaId } = req.params;
+
+    if (!peliculaId) {
+      return next(new AppError('ID de película requerido', 400));
+    }
+
+    const numericId = parseInt(peliculaId, 10);
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('ID de película inválido', 400));
+    }
+
+    const resolvedId = await resolvePeliculaIdForRead(numericId);
+    const targetPeliculaId = resolvedId ?? numericId;
+
+    const aggregate = await prisma.calificacion.aggregate({
+      where: {
+        peliculaId: targetPeliculaId
+      },
+      _avg: {
+        puntuacion: true
+      },
+      _count: {
+        _all: true
+      }
+    });
+
+    const promedio = aggregate._avg.puntuacion ?? 0;
+    const total = aggregate._count?._all ?? 0;
+
+    res.json({
+      peliculaId: numericId,
+      promedio: Number(promedio.toFixed(2)),
+      total
+    });
+  } catch (error) {
+    handleControllerError(error, next, 'Error al obtener estadísticas de calificaciones');
+  }
 };

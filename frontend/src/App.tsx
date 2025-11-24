@@ -1,82 +1,53 @@
-import { useState, useEffect } from 'react';
+import { useAuth } from './contexts/AuthContext';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from './components/LoginPage';
 import { HomePage } from './components/HomePage';
 import { MovieDetail } from './components/MovieDetail';
 import { MyLists } from './components/MyLists';
 import { Recommendations } from './components/Recommendations';
 
-type Page = 'login' | 'home' | 'detail' | 'lists' | 'recommendations';
-
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('login');
-  const [selectedMovieId, setSelectedMovieId] = useState<number | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { isAuthenticated, cargando, logout } = useAuth();
 
-  // Mantener sesión si hay token guardado
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      setIsLoggedIn(true);
-      setCurrentPage('home');
-    }
-  }, []);
-
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-    setCurrentPage('home');
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('usuario');
-    setIsLoggedIn(false);
-    setSelectedMovieId(null);
-    setCurrentPage('login');
-  };
-
-  const handleViewMovie = (id: number) => {
-    setSelectedMovieId(id);
-    setCurrentPage('detail');
-  };
-
-  if (!isLoggedIn) {
-    return <LoginPage onLogin={handleLogin} />;
+  // Mostrar estado de carga mientras se valida el token
+  if (cargando) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-white text-xl">Cargando...</div>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {currentPage === 'home' && (
-        <HomePage
-          onNavigate={setCurrentPage}
-          onViewMovie={handleViewMovie}
-          onLogout={handleLogout}
+      <Routes>
+        <Route 
+          path="/login" 
+          element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} 
         />
-      )}
-
-    {currentPage === 'detail' && selectedMovieId !== null && (
-    <MovieDetail
-    movieId={selectedMovieId}
-    onBack={() => setCurrentPage('home')}
-    onNavigate={setCurrentPage}
-    onLogout={handleLogout}
-     />
-    )}
-
-      {currentPage === 'lists' && (
-        <MyLists
-          onNavigate={setCurrentPage}
-          onViewMovie={handleViewMovie}
-          onLogout={handleLogout}
+        
+        <Route 
+          path="/" 
+          element={isAuthenticated ? <HomePage alCerrarSesion={logout} /> : <Navigate to="/login" />} 
         />
-      )}
-
-      {currentPage === 'recommendations' && (
-        <Recommendations
-          onNavigate={setCurrentPage}
-          onViewMovie={handleViewMovie}
-          onLogout={handleLogout}
+        
+        <Route 
+          path="/lists" 
+          element={isAuthenticated ? <MyLists alCerrarSesion={logout} /> : <Navigate to="/login" />} 
         />
-      )}
+        
+        <Route 
+          path="/recommendations" 
+          element={isAuthenticated ? <Recommendations alCerrarSesion={logout} /> : <Navigate to="/login" />} 
+        />
+        
+        <Route 
+          path="/movie/:id" 
+          element={isAuthenticated ? <MovieDetail alCerrarSesion={logout} /> : <Navigate to="/login" />} 
+        />
+
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
     </div>
   );
 }

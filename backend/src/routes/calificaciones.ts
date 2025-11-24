@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   obtenerCalificacionesPelicula,
+  obtenerEstadisticasPelicula,
   obtenerMiCalificacion,
   calificarPelicula,
   modificarCalificacion,
@@ -12,6 +13,9 @@ const router = Router();
 
 // GET /api/calificaciones/pelicula/:peliculaId (público o protegido según prefieras)
 router.get('/pelicula/:peliculaId', obtenerCalificacionesPelicula);
+
+// GET /api/calificaciones/estadisticas/:peliculaId
+router.get('/estadisticas/:peliculaId', obtenerEstadisticasPelicula);
 
 // Las siguientes rutas requieren autenticación
 router.get('/mi-calificacion/:peliculaId', autenticarJWT, obtenerMiCalificacion);

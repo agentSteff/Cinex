@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth';
 import { AppError, handleControllerError } from '../middleware/errorHandler';
+import { enriquecerPeliculasConTMDB, obtenerPeliculaDetalle } from '../utils/tmdbService';
 
 const prisma = new PrismaClient();
 
@@ -41,6 +42,17 @@ export const obtenerMisListas = async (req: AuthRequest, res: Response, next: Ne
     if (!usuarioId) {
       return next(new AppError('No autorizado', 401));
     }
+
+    const includeParam = typeof req.query.include === 'string'
+      ? req.query.include
+      : Array.isArray(req.query.include)
+        ? req.query.include.join(',')
+        : '';
+    const includePeliculas = includeParam
+      .split(',')
+      .map((token) => token.trim().toLowerCase())
+      .filter(Boolean)
+      .includes('peliculas');
 
     // Obtener listas personalizadas reales con conteo de películas
     const listasPersonalizadas = await prisma.listaPersonalizada.findMany({
@@ -82,6 +94,78 @@ export const obtenerMisListas = async (req: AuthRequest, res: Response, next: Ne
       }
     ];
 
+    let peliculasPorVer: any[] | undefined;
+    let peliculasVistas: any[] | undefined;
+
+    if (includePeliculas) {
+      const mapListaEntries = (entries: ListaConDetalle[]) =>
+        entries
+          .filter((entrada) => entrada.pelicula)
+          .map((entrada) => ({
+            ...entrada.pelicula,
+            fechaAgregada: entrada.fechaAgregada
+          }));
+
+      const [porVerEntradas, vistasEntradas] = await Promise.all([
+        prisma.lista.findMany({
+          where: { usuarioId, tipoLista: 'por_ver' },
+          include: {
+            pelicula: {
+              include: { _count: { select: { calificaciones: true } } }
+            }
+          },
+          orderBy: { fechaAgregada: 'desc' }
+        }),
+        prisma.lista.findMany({
+          where: { usuarioId, tipoLista: 'vistas' },
+          include: {
+            pelicula: {
+              include: { _count: { select: { calificaciones: true } } }
+            }
+          },
+          orderBy: { fechaAgregada: 'desc' }
+        })
+      ]);
+
+      const porVerMapped = await Promise.all(
+        mapListaEntries(porVerEntradas).map(async (pelicula) => {
+          const total = await prisma.calificacion.count({ where: { peliculaId: pelicula.id } });
+          let promedio = 0;
+          if (total > 0) {
+            const agg = await prisma.calificacion.aggregate({ where: { peliculaId: pelicula.id }, _avg: { puntuacion: true } });
+            promedio = Number((agg._avg.puntuacion ?? 0).toFixed(2));
+          }
+          return {
+            ...pelicula,
+            calificacionPromedio: promedio,
+            totalCalificaciones: total
+          };
+        })
+      );
+
+      const vistasMapped = await Promise.all(
+        mapListaEntries(vistasEntradas).map(async (pelicula) => {
+          const total = await prisma.calificacion.count({ where: { peliculaId: pelicula.id } });
+          let promedio = 0;
+          if (total > 0) {
+            const agg = await prisma.calificacion.aggregate({ where: { peliculaId: pelicula.id }, _avg: { puntuacion: true } });
+            promedio = Number((agg._avg.puntuacion ?? 0).toFixed(2));
+          }
+          return {
+            ...pelicula,
+            calificacionPromedio: promedio,
+            totalCalificaciones: total
+          };
+        })
+      );
+
+      const porVerConTmdb = await enriquecerPeliculasConTMDB(porVerMapped);
+      const vistasConTmdb = await enriquecerPeliculasConTMDB(vistasMapped);
+
+      peliculasPorVer = porVerConTmdb;
+      peliculasVistas = vistasConTmdb;
+    }
+
     res.json({
       listasPredeterminadas,
       listasPersonalizadas: listasPersonalizadas.map((lista) => ({
@@ -93,7 +177,13 @@ export const obtenerMisListas = async (req: AuthRequest, res: Response, next: Ne
         esPredeterminada: false,
         totalPeliculas: lista._count.entradas,
         fechaCreada: lista.fechaCreada
-      }))
+      })),
+      ...(includePeliculas
+        ? {
+            peliculasPorVer: peliculasPorVer ?? [],
+            peliculasVistas: peliculasVistas ?? []
+          }
+        : {})
     });
 
   } catch (error) {
@@ -179,15 +269,33 @@ const obtenerListaPredeterminada = async (req: AuthRequest, res: Response, next:
         break;
     }
 
+    // Compute average rating and total for each pelicula before returning
+    const peliculasMapped = await Promise.all(
+      peliculas
+        .filter((item) => item.pelicula)
+        .map(async (item) => {
+          const pelicula = item.pelicula!;
+          const total = await prisma.calificacion.count({ where: { peliculaId: pelicula.id } });
+          let promedio = 0;
+          if (total > 0) {
+            const agg = await prisma.calificacion.aggregate({ where: { peliculaId: pelicula.id }, _avg: { puntuacion: true } });
+            promedio = Number((agg._avg.puntuacion ?? 0).toFixed(2));
+          }
+          return {
+            ...pelicula,
+            fechaAgregado: item.fechaAgregada,
+            calificacionPromedio: promedio,
+            totalCalificaciones: total
+          };
+        })
+    );
+
+    const peliculasConTmdb = await enriquecerPeliculasConTMDB(peliculasMapped);
+
     res.json({
       listaId,
       tipo: 'predeterminada',
-      peliculas: peliculas
-        .filter((item) => item.pelicula)
-        .map((item) => ({
-          ...item.pelicula!,
-          fechaAgregado: item.fechaAgregada
-        }))
+      peliculas: peliculasConTmdb
     });
   } catch (error) {
     handleControllerError(error, next, 'Error al obtener la lista predeterminada');
@@ -229,18 +337,36 @@ const obtenerListaPersonalizada = async (req: AuthRequest, res: Response, next: 
       return next(new AppError('Lista no encontrada', 404));
     }
 
+    // Compute average rating and total for each pelicula in the personalized list
+    const peliculasMapped = await Promise.all(
+      lista.entradas
+        .filter((entrada: EntradaListaPersonalizada) => entrada.pelicula)
+        .map(async (entrada: EntradaListaPersonalizada) => {
+          const pelicula = entrada.pelicula!;
+          const total = await prisma.calificacion.count({ where: { peliculaId: pelicula.id } });
+          let promedio = 0;
+          if (total > 0) {
+            const agg = await prisma.calificacion.aggregate({ where: { peliculaId: pelicula.id }, _avg: { puntuacion: true } });
+            promedio = Number((agg._avg.puntuacion ?? 0).toFixed(2));
+          }
+          return {
+            ...pelicula,
+            fechaAgregado: entrada.fechaAgregada,
+            calificacionPromedio: promedio,
+            totalCalificaciones: total
+          };
+        })
+    );
+
+    const peliculasConTmdb = await enriquecerPeliculasConTMDB(peliculasMapped);
+
     res.json({
       id: lista.id,
       nombre: lista.nombre,
       descripcion: lista.descripcion,
       esPrivada: lista.esPrivada,
       tipo: 'personalizada',
-      peliculas: lista.entradas
-        .filter((entrada: EntradaListaPersonalizada) => entrada.pelicula)
-        .map((entrada: EntradaListaPersonalizada) => ({
-          ...entrada.pelicula!,
-          fechaAgregado: entrada.fechaAgregada
-        }))
+      peliculas: peliculasConTmdb
     });
   } catch (error) {
     handleControllerError(error, next, 'Error al obtener la lista personalizada');
@@ -260,18 +386,56 @@ export const agregarAPorVer = async (req: AuthRequest, res: Response, next: Next
       return next(new AppError('No autorizado', 401));
     }
 
-    // Verificar que la película existe
-    const pelicula = await prisma.pelicula.findUnique({
-      where: { id: parseInt(peliculaId) }
-    });
+    // Resolver peliculaId (aceptamos tanto DB id como tmdbId)
+    const numericId = parseInt(peliculaId, 10);
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('Identificador de película inválido', 400));
+    }
+
+    // Intentar buscar por id (DB) y luego por tmdbId
+    let pelicula = await prisma.pelicula.findUnique({ where: { id: numericId } });
+    if (!pelicula) {
+      pelicula = await prisma.pelicula.findUnique({ where: { tmdbId: numericId } });
+    }
+
+    // Si no existe en DB, intentar obtener desde TMDB y guardarla
+    if (!pelicula) {
+      const detalle = await obtenerPeliculaDetalle(numericId);
+      if (detalle) {
+        // Guardar en DB
+        const nueva = await prisma.pelicula.create({
+          data: {
+            titulo: detalle.titulo,
+            año: detalle.año ?? null,
+            genero: detalle.genero ?? null,
+            director: null,
+            sinopsis: detalle.sinopsis ?? null,
+            imagenUrl: detalle.imagenUrl ?? null,
+            tmdbId: detalle.tmdbId
+          }
+        });
+        pelicula = nueva;
+      } else {
+        // TMDB lookup failed; create a minimal stub record with the tmdbId so list actions can proceed
+        const stub = await prisma.pelicula.create({
+          data: {
+            titulo: `Película ${numericId}`,
+            tmdbId: numericId
+          }
+        });
+        pelicula = stub;
+      }
+    }
 
     if (!pelicula) {
       return next(new AppError('Película no encontrada', 404));
     }
 
+    const peliculaDbId = pelicula.id;
+
     // Verificar si ya está en la lista
     const existeEnLista = await prisma.lista.findFirst({
-      where: { usuarioId, peliculaId: parseInt(peliculaId), tipoLista: 'por_ver' }
+      where: { usuarioId, peliculaId: peliculaDbId, tipoLista: 'por_ver' }
     });
 
     if (existeEnLista) {
@@ -280,7 +444,7 @@ export const agregarAPorVer = async (req: AuthRequest, res: Response, next: Next
 
     // Agregar a lista "Por Ver"
     const nuevaEntrada = await prisma.lista.create({
-      data: { usuarioId: usuarioId!, peliculaId: parseInt(peliculaId), tipoLista: 'por_ver', fechaAgregada: new Date() },
+      data: { usuarioId: usuarioId!, peliculaId: peliculaDbId, tipoLista: 'por_ver', fechaAgregada: new Date() },
       include: { pelicula: true }
     });
 
@@ -307,29 +471,37 @@ export const marcarComoVista = async (req: AuthRequest, res: Response, next: Nex
       return next(new AppError('No autorizado', 401));
     }
 
-    // Verificar que la película existe
-    const pelicula = await prisma.pelicula.findUnique({
-      where: { id: parseInt(peliculaId) }
-    });
+    // Resolver peliculaId (DB id o tmdbId)
+    const numericId = parseInt(peliculaId, 10);
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('Identificador de película inválido', 400));
+    }
+
+    let pelicula = await prisma.pelicula.findUnique({ where: { id: numericId } });
+    if (!pelicula) {
+      pelicula = await prisma.pelicula.findUnique({ where: { tmdbId: numericId } });
+    }
 
     if (!pelicula) {
       return next(new AppError('Película no encontrada', 404));
     }
 
+    const peliculaDbId = pelicula.id;
+
     // Usar transacción para asegurar consistencia
     const resultado = await prisma.$transaction(async (tx) => {
       // Remover de "Por Ver" si existe
-      await tx.lista.deleteMany({ where: { usuarioId, peliculaId: parseInt(peliculaId), tipoLista: 'por_ver' } });
+      await tx.lista.deleteMany({ where: { usuarioId, peliculaId: peliculaDbId, tipoLista: 'por_ver' } });
 
       // Verificar si ya está en "Vistas"
-      const existeEnVistas = await tx.lista.findFirst({ where: { usuarioId, peliculaId: parseInt(peliculaId), tipoLista: 'vistas' } });
+      const existeEnVistas = await tx.lista.findFirst({ where: { usuarioId, peliculaId: peliculaDbId, tipoLista: 'vistas' } });
 
       if (existeEnVistas) {
         throw new AppError('La película ya está marcada como vista', 409);
       }
 
       // Agregar a "Vistas"
-      const nuevaVista = await tx.lista.create({ data: { usuarioId: usuarioId!, peliculaId: parseInt(peliculaId), tipoLista: 'vistas', fechaAgregada: new Date() }, include: { pelicula: true } });
+      const nuevaVista = await tx.lista.create({ data: { usuarioId: usuarioId!, peliculaId: peliculaDbId, tipoLista: 'vistas', fechaAgregada: new Date() }, include: { pelicula: true } });
 
       return nuevaVista;
     });
@@ -357,7 +529,22 @@ export const removerDePorVer = async (req: AuthRequest, res: Response, next: Nex
       return next(new AppError('No autorizado', 401));
     }
 
-    const resultado = await prisma.lista.deleteMany({ where: { usuarioId, peliculaId: parseInt(peliculaId), tipoLista: 'por_ver' } });
+    // Resolver peliculaId (DB id o tmdbId)
+    const numericId = parseInt(peliculaId, 10);
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('Identificador de película inválido', 400));
+    }
+
+    let pelicula = await prisma.pelicula.findUnique({ where: { id: numericId } });
+    if (!pelicula) {
+      pelicula = await prisma.pelicula.findUnique({ where: { tmdbId: numericId } });
+    }
+
+    if (!pelicula) {
+      return next(new AppError('Película no encontrada en la lista "Por Ver"', 404));
+    }
+
+    const resultado = await prisma.lista.deleteMany({ where: { usuarioId, peliculaId: pelicula.id, tipoLista: 'por_ver' } });
 
     if (resultado.count === 0) {
       return next(new AppError('Película no encontrada en la lista "Por Ver"', 404));
@@ -365,6 +552,49 @@ export const removerDePorVer = async (req: AuthRequest, res: Response, next: Nex
 
     res.json({
       message: 'Película removida de "Por Ver"'
+    });
+
+  } catch (error) {
+    handleControllerError(error, next, 'Error al remover película de la lista');
+  }
+};
+
+/**
+ * Remover película de lista "Vistas"
+ * DELETE /api/listas/vistas/:peliculaId
+ */
+export const removerDeVistas = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { peliculaId } = req.params;
+    const usuarioId = req.usuario?.id;
+
+    if (!usuarioId) {
+      return next(new AppError('No autorizado', 401));
+    }
+
+    // Resolver peliculaId (DB id o tmdbId)
+    const numericId = parseInt(peliculaId, 10);
+    if (Number.isNaN(numericId)) {
+      return next(new AppError('Identificador de película inválido', 400));
+    }
+
+    let pelicula = await prisma.pelicula.findUnique({ where: { id: numericId } });
+    if (!pelicula) {
+      pelicula = await prisma.pelicula.findUnique({ where: { tmdbId: numericId } });
+    }
+
+    if (!pelicula) {
+      return next(new AppError('Película no encontrada en la lista "Vistas"', 404));
+    }
+
+    const resultado = await prisma.lista.deleteMany({ where: { usuarioId, peliculaId: pelicula.id, tipoLista: 'vistas' } });
+
+    if (resultado.count === 0) {
+      return next(new AppError('Película no encontrada en la lista "Vistas"', 404));
+    }
+
+    res.json({
+      message: 'Película removida de "Vistas"'
     });
 
   } catch (error) {

@@ -3,7 +3,8 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { 
   buscarPeliculas, 
-  obtenerPeliculasPopulares
+  obtenerPeliculasPopulares,
+  enriquecerPeliculasConTMDB
 } from '../utils/tmdbService';
 import { AppError, handleControllerError } from '../middleware/errorHandler';
 
@@ -87,10 +88,12 @@ export const obtenerTop = async (_req: Request, res: Response, next: NextFunctio
       };
     });
 
+    const dataWithTmdb = await enriquecerPeliculasConTMDB(data as any[]);
+
     res.json({
       source: 'cinex_db',
       count: data.length,
-      data
+      data: dataWithTmdb
     });
   } catch (error) {
     handleControllerError(error, next, 'Error obteniendo películas top');
@@ -98,7 +101,6 @@ export const obtenerTop = async (_req: Request, res: Response, next: NextFunctio
 };
 
 // Obtener detalle de película con calificación promedio
-// TODO: validar que esto funcione correctamente con TMDB
 export const obtenerDetalle = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
@@ -107,17 +109,34 @@ export const obtenerDetalle = async (req: Request, res: Response, next: NextFunc
       return next(new AppError('ID de película requerido', 400));
     }
 
-    // Buscar película en nuestra BD
-    const pelicula = await prisma.pelicula.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        calificaciones: {
-          select: {
-            puntuacion: true
+    // Intenta buscar por ID de la base de datos primero, si no es numérico o no se encuentra, intenta con tmdbId
+    let pelicula = null;
+    const numericId = Number(id);
+    if (!Number.isNaN(numericId)) {
+      pelicula = await prisma.pelicula.findUnique({
+        where: { id: numericId },
+        include: {
+          calificaciones: {
+            select: {
+              puntuacion: true
+            }
           }
         }
-      }
-    });
+      });
+    }
+
+    if (!pelicula) {
+      pelicula = await prisma.pelicula.findUnique({
+        where: { tmdbId: numericId },
+        include: {
+          calificaciones: {
+            select: {
+              puntuacion: true
+            }
+          }
+        }
+      });
+    }
 
     if (!pelicula) {
       return next(new AppError('Película no encontrada', 404));
@@ -129,10 +148,13 @@ export const obtenerDetalle = async (req: Request, res: Response, next: NextFunc
           pelicula.calificaciones.length).toFixed(2)
       : 0;
 
+    const { calificaciones, ...peliculaSinCalificaciones } = pelicula;
+    const [peliculaEnriquecida] = await enriquecerPeliculasConTMDB([peliculaSinCalificaciones as any]);
+
     res.json({
-      ...pelicula,
+      ...peliculaEnriquecida,
       calificacionPromedio: promedio,
-      totalCalificaciones: pelicula.calificaciones.length
+      totalCalificaciones: calificaciones.length
     });
   } catch (error) {
     handleControllerError(error, next, 'Error obteniendo detalle de película');
@@ -210,11 +232,13 @@ export const obtenerPorGenero = async (req: Request, res: Response, next: NextFu
       };
     });
 
+    const dataWithTmdb = await enriquecerPeliculasConTMDB(data as any[]);
+
     res.json({
       source: 'cinex_db',
       generoBuscado: genero,
       count: data.length,
-      data
+      data: dataWithTmdb
     });
   } catch (error) {
     handleControllerError(error, next, 'Error al filtrar películas por género');

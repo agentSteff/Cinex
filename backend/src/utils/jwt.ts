@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { UsuarioPayload } from '../types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'cinex_default_secret_key';
-const JWT_EXPIRES_IN = '7d'; // Token expira en 7 días
+const JWT_EXPIRES_IN = '7d';
 
 export const generarToken = (payload: UsuarioPayload): string => {
   return jwt.sign(payload, JWT_SECRET, {

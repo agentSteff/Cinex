@@ -13,14 +13,14 @@ const EnvSchema = z.object({
     .url('FRONTEND_URL debe ser una URL válida')
     .optional()
     .or(z.string().length(0).optional()),
-  PORT: z.coerce.number().int().positive().default(3000),
+  PORT: z.coerce.number().int().positive().default(5000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development')
 });
 
 const parsedEnv = EnvSchema.safeParse(process.env);
 
 if (!parsedEnv.success) {
-  console.error('❌ Configuración de entorno inválida:', parsedEnv.error.flatten().fieldErrors);
+  console.error('Configuración de entorno inválida:', parsedEnv.error.flatten().fieldErrors);
   process.exit(1);
 }
 
@@ -28,7 +28,7 @@ const env = parsedEnv.data;
 
 const normalizedOrigins = env.FRONTEND_URL && env.FRONTEND_URL.length > 0
   ? env.FRONTEND_URL.split(',').map((origin) => origin.trim())
-  : ['http://localhost:5173'];
+  : ['http://localhost:3000'];
 
 export const appConfig = {
   ...env,
