@@ -229,7 +229,15 @@ cd backend
 
 - **Backend**: Ver `backend/README.md` para detalles de la API
 - **Frontend**: Ver `frontend/README.md` para guía de componentes
-- **Preparación de Entrega**: Ver `PREPARACION_ENTREGA.md` para checklist de revisión
+
+---
+
+## 👨‍🎓 Estudiantes
+
+- Fabrizzio Javier Montalto Lizano
+- Sebastian Delgado Tenorio
+- Jeziel Javier Oviedo Cerdas
+- Stephanny Carmona Campos
 
 ---
 
@@ -240,5 +248,3 @@ cd backend
 - **Imágenes**: [Unsplash](https://unsplash.com)
 
 ---
-
-**Desarrollado con ❤️ para los amantes del cine**
